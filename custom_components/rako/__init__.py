@@ -44,9 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
     hass.data[DOMAIN][rako_bridge.mac] = rako_domain_entry_data
 
-    hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(entry, LIGHT_DOMAIN)
-    )
+    await hass.config_entries.async_forward_entry_setups(entry, [LIGHT_DOMAIN])
 
     return True
 

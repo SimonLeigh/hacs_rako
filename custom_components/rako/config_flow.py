@@ -63,9 +63,7 @@ class RakoConfigFlow(ConfigFlow, domain=DOMAIN):
                 bridge_desc=bridge_desc, errors={CONF_BASE: "cannot_connect"}
             )
 
-        await self.async_set_unique_id(
-            unique_id=user_input[CONF_MAC], raise_on_progress=True
-        )
+        await self.async_set_unique_id(user_input[CONF_MAC], raise_on_progress=True)
         self._abort_if_unique_id_configured()
 
         return self.async_create_entry(

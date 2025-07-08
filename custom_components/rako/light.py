@@ -66,7 +66,7 @@ class RakoLight(LightEntity):
         self._light = light
         self._brightness = self._init_get_brightness_from_cache()
         self._available = True
-        self._attr_supported_color_modes= {ColorMode.BRIGHTNESS}
+        self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
 
     @property
     def name(self) -> str:
@@ -173,7 +173,8 @@ class RakoRoomLight(RakoLight):
 
         except (RakoBridgeError, asyncio.TimeoutError):
             if self._available:
-                _LOGGER.error("An error occurred while updating the Rako Light")
+                _LOGGER.error(
+                    "An error occurred while updating the Rako Light")
             self._available = False
             return
 
@@ -212,6 +213,7 @@ class RakoChannelLight(RakoLight):
 
         except (RakoBridgeError, asyncio.TimeoutError):
             if self._available:
-                _LOGGER.error("An error occurred while updating the Rako Light")
+                _LOGGER.error(
+                    "An error occurred while updating the Rako Light")
             self._available = False
             return

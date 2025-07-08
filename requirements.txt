@@ -1,5 +1,5 @@
-colorlog==6.7.0
-homeassistant==2024.3.3
-pip>=21.0,<23.2
-ruff==0.0.292
-python_rako==0.0.14
+colorlog==6.9.0
+homeassistant==2025.7.1
+pip>=21.0,<25.0
+ruff==0.11.9
+python-rako-2025==0.0.1
