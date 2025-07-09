@@ -1,5 +1,6 @@
 {
     "name": "Rako",
-    "homeassistant": "2025.7.1",
+    "homeassistant": "2025.5.0",
+    "hacs": "2.0.1",
     "render_readme": true
 }
