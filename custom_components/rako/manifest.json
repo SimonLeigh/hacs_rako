@@ -11,7 +11,7 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/SimonLeigh/hacs_rako/issues",
   "requirements": [
-    "python-rako-2025==0.0.1"
+    "python-rako-2025==0.1.0"
   ],
   "version": "0.5.1"
 }
