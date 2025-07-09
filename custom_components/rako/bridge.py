@@ -1,4 +1,5 @@
 """Module representing a Rako Bridge."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,6 +12,8 @@ from python_rako.helpers import convert_to_brightness, get_dg_listener
 from python_rako.model import ChannelStatusMessage, SceneStatusMessage, StatusMessage
 
 from homeassistant.core import HomeAssistant
+
+from custom_components.rako.fan import RakoFan
 
 from .const import DOMAIN
 from .light import RakoLight
@@ -43,6 +46,19 @@ class RakoBridge(Bridge):
         return rako_domain_entry_data["rako_light_map"]
 
     @property
+    def _fan_map(self) -> dict[str, RakoFan]:
+        rako_domain_entry_data: RakoDomainEntryData = self.hass.data[DOMAIN][self.mac]
+        return rako_domain_entry_data.get("rako_fan_map", {})
+
+    @property
+    def _entity_map(self) -> dict[str, any]:
+        """Return combined map of all listening entities (lights and fans)."""
+        entity_map = {}
+        entity_map.update(self._light_map)
+        entity_map.update(self._fan_map)
+        return entity_map
+
+    @property
     def _listener_task(self) -> Task | None:
         rako_domain_entry_data: RakoDomainEntryData = self.hass.data[DOMAIN][self.mac]
         return rako_domain_entry_data["rako_listener_task"]
@@ -57,6 +73,11 @@ class RakoBridge(Bridge):
         light_map = self._light_map
         return light_map.get(light_unique_id)
 
+    def get_listening_entity(self, entity_unique_id: str):
+        """Return any listening entity (light or fan)."""
+        entity_map = self._entity_map
+        return entity_map.get(entity_unique_id)
+
     def _add_listening_light(self, light: RakoLight) -> None:
         light_map = self._light_map
         light_map[light.unique_id] = light
@@ -65,6 +86,15 @@ class RakoBridge(Bridge):
         light_map = self._light_map
         if light.unique_id in light_map:
             del light_map[light.unique_id]
+
+    def _add_listening_fan(self, fan) -> None:
+        fan_map = self._fan_map
+        fan_map[fan.unique_id] = fan
+
+    def _remove_listening_fan(self, fan) -> None:
+        fan_map = self._fan_map
+        if fan.unique_id in fan_map:
+            del fan_map[fan.unique_id]
 
     async def listen_for_state_updates(self) -> None:
         """Background task to listen for state updates."""
@@ -79,17 +109,24 @@ class RakoBridge(Bridge):
             with contextlib.suppress(asyncio.CancelledError):
                 await listener_task
 
+    async def register_for_state_updates(self, entity) -> None:
+        """Register an entity to listen for state updates."""
+        if hasattr(entity, "brightness"):  # Light entity
+            self._add_listening_light(entity)
+        else:  # Fan entity
+            self._add_listening_fan(entity)
 
-    async def register_for_state_updates(self, light: RakoLight) -> None:
-        """Register a light to listen for state updates."""
-        self._add_listening_light(light)
-        if len(self._light_map) == 1:
+        if len(self._entity_map) == 1:
             await self.listen_for_state_updates()
 
-    async def deregister_for_state_updates(self, light: RakoLight) -> None:
-        """Deregister a light to listen for state updates."""
-        self._remove_listening_light(light)
-        if not self._light_map:
+    async def deregister_for_state_updates(self, entity) -> None:
+        """Deregister an entity to listen for state updates."""
+        if hasattr(entity, "brightness"):  # Light entity
+            self._remove_listening_light(entity)
+        else:  # Fan entity
+            self._remove_listening_fan(entity)
+
+        if not self._entity_map:
             await self.stop_listening_for_state_updates()
 
 
@@ -108,11 +145,17 @@ def _state_update(bridge: RakoBridge, status_message: StatusMessage) -> None:
             _state_update(bridge, _msg)
         brightness = convert_to_brightness(status_message.scene)
 
-    listening_light = bridge.get_listening_light(light_unique_id)
-    if listening_light:
-        listening_light.brightness = brightness
+    # Update both lights and fans with the same unique_id pattern
+    listening_entity = bridge.get_listening_entity(light_unique_id)
+    if listening_entity:
+        if hasattr(listening_entity, "brightness"):  # Light entity
+            listening_entity.brightness = brightness
+        elif hasattr(listening_entity, "percentage"):  # Fan entity
+            # Convert brightness (0-255) to percentage (0-100)
+            percentage = int((brightness / 255) * 100) if brightness > 0 else 0
+            listening_entity.percentage = percentage
     else:
-        _LOGGER.debug("Light not listening: %s", status_message)
+        _LOGGER.debug("Entity not listening: %s", status_message)
 
 
 async def listen_for_state_updates(bridge: RakoBridge) -> None:

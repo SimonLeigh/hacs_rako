@@ -1,4 +1,5 @@
 """Rako shared models."""
+
 from __future__ import annotations
 
 from asyncio import Task
@@ -6,6 +7,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     from .bridge import RakoBridge
+    from .fan import RakoFan
     from .light import RakoLight
 
 
@@ -14,4 +16,5 @@ class RakoDomainEntryData(TypedDict):
 
     rako_bridge_client: RakoBridge
     rako_light_map: dict[str, RakoLight]
+    rako_fan_map: dict[str, RakoFan]
     rako_listener_task: Task | None
