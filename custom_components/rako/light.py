@@ -170,12 +170,17 @@ class RakoRoomLight(RakoLight):
             await asyncio.wait_for(
                 self.bridge.set_room_scene(self._light.room_id, scene), timeout=3.0
             )
+            # Update local state immediately after successful command
+            self._brightness = brightness
+            self._available = True
+            self.async_write_ha_state()
 
         except (RakoBridgeError, asyncio.TimeoutError):
             if self._available:
                 _LOGGER.error(
                     "An error occurred while updating the Rako Light")
             self._available = False
+            self.async_write_ha_state()
             return
 
 
@@ -210,10 +215,15 @@ class RakoChannelLight(RakoLight):
                 ),
                 timeout=3.0,
             )
+            # Update local state immediately after successful command
+            self._brightness = brightness
+            self._available = True
+            self.async_write_ha_state()
 
         except (RakoBridgeError, asyncio.TimeoutError):
             if self._available:
                 _LOGGER.error(
                     "An error occurred while updating the Rako Light")
             self._available = False
+            self.async_write_ha_state()
             return
