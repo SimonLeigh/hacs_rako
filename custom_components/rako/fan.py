@@ -44,9 +44,6 @@ async def async_setup_entry(
     try:
         _LOGGER.debug("Starting ventilation discovery for bridge %s", bridge.host)
 
-        # Fetch XML once to avoid race conditions with light platform
-        rako_xml = await bridge.get_rako_xml(session)
-        
         # Now try the discovery
         async for ventilation in bridge.discover_ventilation(session):
             if isinstance(ventilation, python_rako.ChannelVentilation):

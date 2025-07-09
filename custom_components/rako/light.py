@@ -1,4 +1,5 @@
 """Platform for light integration."""
+
 from __future__ import annotations
 
 import asyncio
@@ -44,9 +45,6 @@ async def async_setup_entry(
 
     bridge.level_cache, bridge.scene_cache = await bridge.get_cache_state()
 
-    # Fetch XML once to avoid race conditions with fan platform
-    rako_xml = await bridge.get_rako_xml(session)
-    
     async for light in bridge.discover_lights(session):
         if isinstance(light, python_rako.ChannelLight):
             hass_light: RakoLight = RakoChannelLight(bridge, light)
@@ -120,10 +118,10 @@ class RakoLight(LightEntity):
         """Entity pushes its state to HA."""
         return False
 
-#    @property
- #   def supported_features(self) -> int:
- #       """Flag supported features."""
- #       return SUPPORT_BRIGHTNESS
+    #    @property
+    #   def supported_features(self) -> int:
+    #       """Flag supported features."""
+    #       return SUPPORT_BRIGHTNESS
     @property
     def color_mode(self) -> ColorMode:
         """Sets available color mode for Rako lights (only supports Brightness, for now."""
@@ -180,8 +178,7 @@ class RakoRoomLight(RakoLight):
 
         except (RakoBridgeError, asyncio.TimeoutError):
             if self._available:
-                _LOGGER.error(
-                    "An error occurred while updating the Rako Light")
+                _LOGGER.error("An error occurred while updating the Rako Light")
             self._available = False
             self.async_write_ha_state()
             return
@@ -225,8 +222,7 @@ class RakoChannelLight(RakoLight):
 
         except (RakoBridgeError, asyncio.TimeoutError):
             if self._available:
-                _LOGGER.error(
-                    "An error occurred while updating the Rako Light")
+                _LOGGER.error("An error occurred while updating the Rako Light")
             self._available = False
             self.async_write_ha_state()
             return
