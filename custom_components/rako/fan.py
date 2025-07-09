@@ -42,16 +42,38 @@ async def async_setup_entry(
     hass_fans: list[Entity] = []
     session = async_get_clientsession(hass)
 
-    async for ventilation in bridge.discover_ventilation(session):
-        if isinstance(ventilation, python_rako.ChannelVentilation):
-            hass_fan: RakoFan = RakoChannelFan(bridge, ventilation)
-        elif isinstance(ventilation, python_rako.RoomVentilation):
-            hass_fan = RakoRoomFan(bridge, ventilation)
-        else:
-            continue
+    try:
+        _LOGGER.debug("Starting ventilation discovery for bridge %s", bridge.host)
+        
+        # Debug: Get the raw XML first to see what's being processed
+        try:
+            rako_xml = await bridge.get_rako_xml(session)
+            _LOGGER.debug("Retrieved XML length: %d", len(rako_xml))
+            _LOGGER.debug("XML first 200 chars: %s", repr(rako_xml[:200]))
+            _LOGGER.debug("XML last 200 chars: %s", repr(rako_xml[-200:]))
+        except Exception as xml_error:
+            _LOGGER.error("Failed to get XML: %s", xml_error)
+            raise
+        
+        # Now try the discovery
+        async for ventilation in bridge.discover_ventilation(session):
+            if isinstance(ventilation, python_rako.ChannelVentilation):
+                hass_fan: RakoFan = RakoChannelFan(bridge, ventilation)
+            elif isinstance(ventilation, python_rako.RoomVentilation):
+                hass_fan = RakoRoomFan(bridge, ventilation)
+            else:
+                continue
 
-        hass_fans.append(hass_fan)
+            hass_fans.append(hass_fan)
+            _LOGGER.debug("Added fan: %s", hass_fan.name)
 
+    except Exception as e:
+        _LOGGER.error("Error during ventilation discovery: %s", e)
+        import traceback
+        _LOGGER.error("Full traceback: %s", traceback.format_exc())
+        # Continue without adding fan entities if discovery fails
+
+    _LOGGER.info("Added %d fan entities", len(hass_fans))
     async_add_entities(hass_fans, True)
 
 
