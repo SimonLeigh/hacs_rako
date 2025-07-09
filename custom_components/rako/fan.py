@@ -7,9 +7,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import python_rako
-from python_rako.exceptions import RakoBridgeError
-from python_rako.helpers import convert_to_brightness, convert_to_scene
-
 from homeassistant.components.fan import (
     FanEntity,
     FanEntityFeature,
@@ -19,6 +16,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from python_rako.exceptions import RakoBridgeError
+from python_rako.helpers import convert_to_brightness, convert_to_scene
 
 from .const import DOMAIN
 from .util import create_unique_id
@@ -45,16 +44,9 @@ async def async_setup_entry(
     try:
         _LOGGER.debug("Starting ventilation discovery for bridge %s", bridge.host)
 
-        # Debug: Get the raw XML first to see what's being processed
-        try:
-            rako_xml = await bridge.get_rako_xml(session)
-            _LOGGER.debug("Retrieved XML length: %d", len(rako_xml))
-            _LOGGER.debug("XML first 200 chars: %s", repr(rako_xml[:200]))
-            _LOGGER.debug("XML last 200 chars: %s", repr(rako_xml[-200:]))
-        except Exception as xml_error:
-            _LOGGER.error("Failed to get XML: %s", xml_error)
-            raise
-
+        # Fetch XML once to avoid race conditions with light platform
+        rako_xml = await bridge.get_rako_xml(session)
+        
         # Now try the discovery
         async for ventilation in bridge.discover_ventilation(session):
             if isinstance(ventilation, python_rako.ChannelVentilation):
@@ -89,7 +81,9 @@ class RakoFan(FanEntity):
         self._ventilation = ventilation
         self._percentage = self._init_get_percentage_from_cache()
         self._available = True
-        self._attr_supported_features = FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
+        self._attr_supported_features = (
+            FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
+        )
 
     @property
     def name(self) -> str:
@@ -259,4 +253,3 @@ class RakoChannelFan(RakoFan):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the fan."""
         await self.async_set_percentage(0)
-

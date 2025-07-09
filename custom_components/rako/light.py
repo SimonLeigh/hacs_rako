@@ -44,6 +44,9 @@ async def async_setup_entry(
 
     bridge.level_cache, bridge.scene_cache = await bridge.get_cache_state()
 
+    # Fetch XML once to avoid race conditions with fan platform
+    rako_xml = await bridge.get_rako_xml(session)
+    
     async for light in bridge.discover_lights(session):
         if isinstance(light, python_rako.ChannelLight):
             hass_light: RakoLight = RakoChannelLight(bridge, light)
