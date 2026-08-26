@@ -8,8 +8,7 @@ cross-checked against official Rako protocol docs
 [3rd-party access protocols](https://rakocontrols.com/media/1391/rako-bridge-3rd-party-access-protocols.pdf);
 local copy `python-rako/doc/accessing-the-rako-bridge.pdf`).
 **Status:** interactive experiments COMPLETE (2026-08-25): physical keypad, Rako app (scene +
-slider), HA-originated commands, echo latency. Remaining: overnight passive soak
-(schedules/cloud/loss baseline) — listener left running.
+slider), HA-originated commands, echo latency. Overnight soak complete (facts 17–22).
 
 ## Confirmed facts (doc + observation agree)
 
@@ -139,6 +138,36 @@ Room 9 keypad. Button mapping (per maintainer): "up" = room 9 lights on (fade),
 Scene cache before/after both showed room 9 = scene 0; room 158 absent from cache
 throughout (never scene-set, only cmd-51/fade controlled).
 
+## Overnight soak (2026-08-25 20:37 → 2026-08-26 19:57, 23.3 h, passive sniff on the HA host)
+
+297 unique bridge packets (log carried ~50% two-NIC duplicates; deduped at <50 ms).
+
+17. **Occupancy sensors dominate traffic and carry a distinct flag.** 240/267 SET_SCENE
+    messages came from two rooms (145, 10) in bursts every 2–30 s while occupied
+    (scene 1) ending with scene 0 on timeout. Their flags byte is **9 (0b1001)** whereas
+    every keypad/app/HA scene set carries **1**. Working interpretation: **flags bit 3 =
+    sensor/automatic origin** (undocumented). Use it to tag event origin and to avoid
+    treating PIR retriggers as keypad presses; consider suppressing redundant identical
+    scene re-sends in the coordinator (240 full scene fan-outs/day today).
+18. **The bridge itself emits duplicate broadcasts ~200 ms apart** for some keypad
+    events (observed OFF ×2 at 197 ms, FADE ×2 at 195 ms and 240 ms) — distinct from
+    multi-NIC capture duplicates (<1 ms). Echo-verify and event firing need a ~300 ms
+    dedupe window keyed on (room, channel, command, data).
+19. **Overnight: one event only** — 02:55:40, room 161 ch 1 SET_LEVEL 255, flags=1
+    (origin: HA automation or bridge schedule, TBC). No cloud or other scheduled traffic
+    seen in 23 h.
+20. **Other hosts send discovery `'D'` on 9761** (two LAN hosts, one on an adjacent subnet
+    visible via the HA host's second NIC; one burst of six at 6 s intervals). The listener
+    must ignore non-`S` packets from non-bridge sources (it does; the current library logs
+    them as unsupported).
+21. **Decoder coverage on real traffic: 96%** — the 4% dropped are exactly the
+    FADE/STOP/`D` packets already identified. Nothing new and unparseable appeared.
+22. **Cross-host consistency:** during the 6-minute overlap the workstation listener and
+    the HA-host sniffer saw identical bridge packets. Still no observed broadcast loss.
+
+Per-hour activity (unique packets): evening 16/16/4, quiet 22:00–09:00 (2), daytime peaks
+of 92 (12h) and 50 (15h) — all sensor bursts.
+
 ## Open items
 
 - [x] Confirm physical effect of the two cmd-0x33 events — YES: courtyard on → off.
@@ -150,8 +179,8 @@ throughout (never scene-set, only cmd-51/fade controlled).
 - [x] Echo latency: 144–306 ms echo, 677–770 ms AOK (see fact 14)
 - [ ] HA-originated HTTP command echo (prod HA uses UDP; test HTTP commander separately)
 - [x] Dual listeners: prod HA and the dev Mac listener both received every broadcast all evening ✅
-- [ ] Bridge schedules / cloud-app (away) actions: broadcast or not?
-- [ ] Broadcast loss rate over a longer soak (leave listener running; compare against prod HA history)
+- [~] Bridge schedules / cloud-app: 23 h soak saw no cloud traffic; one 02:55 fan event of unknown origin (fact 19)
+- [x] 23 h soak: no observed loss; sensor storms and bridge-level duplicates characterised (facts 17–22)
 - [x] `scenes.htm` works as an HTTP scene-cache read (see fact 13)
 - [ ] Decode cmd 0x33 fully (send it ourselves to a test channel with varying data bytes)
 - [ ] Fade-duration → level estimation: measure default fade rate (fade up from 0 to full, time it)
