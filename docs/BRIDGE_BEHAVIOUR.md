@@ -145,7 +145,7 @@ throughout (never scene-set, only cmd-51/fade controlled).
 17. **Occupancy sensors dominate traffic and carry a distinct flag.** 240/267 SET_SCENE
     messages came from two rooms (145, 10) in bursts every 2–30 s while occupied
     (scene 1) ending with scene 0 on timeout. Their flags byte is **9 (0b1001)** whereas
-    every keypad/app/HA scene set carries **1**. Working interpretation: **flags bit 3 =
+    every keypad/app/HA scene set carries **1**. Confirmed: both rooms have Rako PIR sensors. **Flags bit 3 =
     sensor/automatic origin** (undocumented). Use it to tag event origin and to avoid
     treating PIR retriggers as keypad presses; consider suppressing redundant identical
     scene re-sends in the coordinator (240 full scene fan-outs/day today).
@@ -154,10 +154,10 @@ throughout (never scene-set, only cmd-51/fade controlled).
     multi-NIC capture duplicates (<1 ms). Echo-verify and event firing need a ~300 ms
     dedupe window keyed on (room, channel, command, data).
 19. **Overnight: one event only** — 02:55:40, room 161 ch 1 SET_LEVEL 255, flags=1
-    (origin: HA automation or bridge schedule, TBC). No cloud or other scheduled traffic
+    (origin: probably an HA automation — unconfirmed). No cloud or other scheduled traffic
     seen in 23 h.
 20. **Other hosts send discovery `'D'` on 9761** (two LAN hosts, one on an adjacent subnet
-    visible via the HA host's second NIC; one burst of six at 6 s intervals). The listener
+    visible via the HA host's second NIC; one burst of six at 6 s intervals). Confirmed: two phones running the Rako app. The listener
     must ignore non-`S` packets from non-bridge sources (it does; the current library logs
     them as unsupported).
 21. **Decoder coverage on real traffic: 96%** — the 4% dropped are exactly the
