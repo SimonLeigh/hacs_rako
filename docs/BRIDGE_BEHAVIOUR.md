@@ -154,7 +154,7 @@ throughout (never scene-set, only cmd-51/fade controlled).
     multi-NIC capture duplicates (<1 ms). Echo-verify and event firing need a ~300 ms
     dedupe window keyed on (room, channel, command, data).
 19. **Overnight: one event only** — 02:55:40, room 161 ch 1 SET_LEVEL 255, flags=1
-    (origin: probably an HA automation — unconfirmed). No cloud or other scheduled traffic
+    (confirmed: an HA automation, air-quality triggered — so HA-originated fan commands also echo as expected). No cloud or other scheduled traffic
     seen in 23 h.
 20. **Other hosts send discovery `'D'` on 9761** (two LAN hosts, one on an adjacent subnet
     visible via the HA host's second NIC; one burst of six at 6 s intervals). Confirmed: two phones running the Rako app. The listener
@@ -179,7 +179,7 @@ of 92 (12h) and 50 (15h) — all sensor bursts.
 - [x] Echo latency: 144–306 ms echo, 677–770 ms AOK (see fact 14)
 - [ ] HA-originated HTTP command echo (prod HA uses UDP; test HTTP commander separately)
 - [x] Dual listeners: prod HA and the dev Mac listener both received every broadcast all evening ✅
-- [~] Bridge schedules / cloud-app: 23 h soak saw no cloud traffic; one 02:55 fan event of unknown origin (fact 19)
+- [x] Bridge schedules / cloud-app: 23 h soak saw no cloud or bridge-scheduled traffic; the only overnight event was an HA automation (fact 19)
 - [x] 23 h soak: no observed loss; sensor storms and bridge-level duplicates characterised (facts 17–22)
 - [x] `scenes.htm` works as an HTTP scene-cache read (see fact 13)
 - [ ] Decode cmd 0x33 fully (send it ourselves to a test channel with varying data bytes)
