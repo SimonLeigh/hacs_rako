@@ -182,5 +182,6 @@ of 92 (12h) and 50 (15h) — all sensor bursts.
 - [x] Bridge schedules / cloud-app: 23 h soak saw no cloud or bridge-scheduled traffic; the only overnight event was an HA automation (fact 19)
 - [x] 23 h soak: no observed loss; sensor storms and bridge-level duplicates characterised (facts 17–22)
 - [x] `scenes.htm` works as an HTTP scene-cache read (see fact 13)
+- [ ] **Minimum safe inter-command interval**: not yet measured. Observed: an HA command sent moments after another to the same channel vanished (fact 12); self-sent commands 2–4 s apart all succeeded (fact 14). Measure with paced pairs at decreasing intervals (WP-1.6); until then assume 1.5 s.
 - [ ] Decode cmd 0x33 fully (send it ourselves to a test channel with varying data bytes)
 - [ ] Fade-duration → level estimation: measure default fade rate (fade up from 0 to full, time it)
