@@ -10,10 +10,28 @@ select = [
 ignore = [
     "ANN401", # Dynamically typed expressions (typing.Any) are disallowed
     "D203", # no-blank-line-before-class (incompatible with formatter)
-    "D212", # multi-line-summary-first-line (incompatible with formatter)
+    "D213", # multi-line-summary-second-line (Home Assistant puts it on the first)
     "COM812", # incompatible with formatter
     "ISC001", # incompatible with formatter
+
+    # Selecting ALL brings in rules Home Assistant core does not select at all.
+    # These are the ones that conflict with how an integration is written:
+    "CPY001", # HA integrations carry no per-file copyright header
+    "EM101", # exception messages are written inline, as in HA core
+    "EM102",
+    "TRY003", # ... and are long enough to be useful
+    "RUF012", # `_attr_*` class attributes are the documented HA convention
+    "ARG002", # entity/platform method signatures are dictated by HA, not by us
+    "ARG004",
 ]
+
+[lint.isort]
+# Matches Home Assistant core: `homeassistant` is first-party, so library
+# imports (python_rako) sort ahead of it.
+force-sort-within-sections = true
+known-first-party = ["homeassistant"]
+combine-as-imports = true
+split-on-trailing-comma = false
 
 [lint.flake8-pytest-style]
 fixture-parentheses = false

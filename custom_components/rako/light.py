@@ -2,227 +2,143 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-import python_rako
-from python_rako.exceptions import RakoBridgeError
-from python_rako.helpers import convert_to_brightness, convert_to_scene
+from python_rako import ChannelLight, RakoBridgeError, RoomLight
+from python_rako.helpers import convert_to_scene
 
-from homeassistant.components.light import (
-    ATTR_BRIGHTNESS,
-    ColorMode,
-    LightEntity,
-)
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.components.light import ATTR_BRIGHTNESS, ColorMode, LightEntity
+from homeassistant.const import STATE_ON
+from homeassistant.exceptions import PlatformNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.entity import DeviceInfo, Entity
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
-from .util import create_unique_id
+from .const import ATTR_ESTIMATED
+from .entity import RakoEntity
+from .helpers import LevelView, channel_level, room_level
 
 if TYPE_CHECKING:
-    from .bridge import RakoBridge
-    from .model import RakoDomainEntryData
+    from homeassistant.core import HomeAssistant, State
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+    from .coordinator import RakoCoordinator
+    from .model import RakoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: RakoConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the config entry."""
-    rako_domain_entry_data: RakoDomainEntryData = hass.data[DOMAIN][entry.unique_id]
-    bridge = rako_domain_entry_data["rako_bridge_client"]
-
-    hass_lights: list[Entity] = []
+    """Set up the Rako lights for a config entry."""
+    coordinator = entry.runtime_data.coordinator
     session = async_get_clientsession(hass)
 
-    bridge.level_cache, bridge.scene_cache = await bridge.get_cache_state()
+    try:
+        lights, _ = await coordinator.bridge.discover_devices(session)
+    except (RakoBridgeError, OSError, TimeoutError) as err:
+        raise PlatformNotReady(f"Could not discover Rako lights: {err}") from err
 
-    async for light in bridge.discover_lights(session):
-        if isinstance(light, python_rako.ChannelLight):
-            hass_light: RakoLight = RakoChannelLight(bridge, light)
-        elif isinstance(light, python_rako.RoomLight):
-            hass_light = RakoRoomLight(bridge, light)
-        else:
-            continue
+    entities: list[RakoLight] = []
+    for light in lights:
+        if isinstance(light, ChannelLight):
+            entities.append(RakoChannelLight(coordinator, light))
+        elif isinstance(light, RoomLight):
+            entities.append(RakoRoomLight(coordinator, light))
 
-        hass_lights.append(hass_light)
-
-    async_add_entities(hass_lights, True)
+    _LOGGER.debug("Adding %d Rako light entities", len(entities))
+    async_add_entities(entities)
 
 
-class RakoLight(LightEntity):
-    """Representation of a Rako Light."""
+class RakoLight(RakoEntity, LightEntity):
+    """A Rako circuit or room, as a dimmable light."""
 
-    def __init__(self, bridge: RakoBridge, light: python_rako.Light) -> None:
-        """Initialize a RakoLight."""
-        self.bridge = bridge
-        self._light = light
-        self._brightness = self._init_get_brightness_from_cache()
-        self._available = True
-        self._attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+    _attr_color_mode = ColorMode.BRIGHTNESS
+    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
 
-    @property
-    def name(self) -> str:
-        """Return the display name of this light."""
-        raise NotImplementedError()
-
-    def _init_get_brightness_from_cache(self) -> int:
-        raise NotImplementedError()
-
-    async def async_added_to_hass(self) -> None:
-        """Run when entity about to be added to hass."""
-        await self.bridge.register_for_state_updates(self)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Run when entity about to be added to hass."""
-        await self.bridge.deregister_for_state_updates(self)
+    def _level(self) -> LevelView:
+        """Return the level to show, and whether it is an approximation."""
+        raise NotImplementedError
 
     @property
-    def unique_id(self) -> str:
-        """Light's unique ID."""
-        return create_unique_id(
-            self.bridge.mac, self._light.room_id, self._light.channel_id
-        )
+    def brightness(self) -> int | None:
+        """Brightness of the light, or ``None`` when it is unknown."""
+        return self._level().brightness
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._available
+    def is_on(self) -> bool | None:
+        """Whether the light is on; ``None`` reads as unknown, not off."""
+        brightness = self._level().brightness
+        if brightness is None:
+            return None
+        return brightness > 0
 
     @property
-    def brightness(self) -> int:
-        """Return the brightness of the light."""
-        return self._brightness
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Flag state the bridge has not actually reported.
 
-    @brightness.setter
-    def brightness(self, value: int) -> None:
-        """Set the brightness. Used when state is updated outside Home Assistant."""
-        self._brightness = value
-        self.async_write_ha_state()
+        True after a fade (the bridge broadcasts no level when a fade stops),
+        for a level derived from a scene, and for state restored across a
+        restart.
+        """
+        return {ATTR_ESTIMATED: self._level().estimated}
 
-    @property
-    def is_on(self) -> bool:
-        """Return true if light is on."""
-        return self.brightness > 0
-
-    @property
-    def should_poll(self) -> bool:
-        """Entity pushes its state to HA."""
-        return False
-
-    #    @property
-    #   def supported_features(self) -> int:
-    #       """Flag supported features."""
-    #       return SUPPORT_BRIGHTNESS
-    @property
-    def color_mode(self) -> ColorMode:
-        """Sets available color mode for Rako lights (only supports Brightness, for now."""
-        return ColorMode.BRIGHTNESS
+    def _restored_level(self, last_state: State) -> int | None:
+        if last_state.state != STATE_ON:
+            return 0
+        brightness = last_state.attributes.get(ATTR_BRIGHTNESS)
+        return int(brightness) if brightness is not None else 255
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the light."""
-        await self.async_turn_on(brightness=0)
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information about this Rako Light."""
-        return {
-            "identifiers": {(DOMAIN, self.unique_id)},
-            "name": self.name,
-            "manufacturer": "Rako",
-            "suggested_area": self._light.room_title,
-            "via_device": (DOMAIN, self.bridge.mac),
-        }
+        await self.async_turn_on(**{ATTR_BRIGHTNESS: 0})
 
 
 class RakoRoomLight(RakoLight):
-    """Representation of a Rako Room Light."""
+    """A whole Rako room, where brightness selects a scene."""
 
-    def __init__(self, bridge: RakoBridge, light: python_rako.RoomLight) -> None:
-        """Initialize a RakoLight."""
-        super().__init__(bridge, light)
-        self._light: python_rako.RoomLight = light
+    def __init__(self, coordinator: RakoCoordinator, light: RoomLight) -> None:
+        """Initialise a room light."""
+        super().__init__(
+            coordinator,
+            room_id=light.room_id,
+            channel_id=light.channel_id,
+            device_name=light.room_title,
+            room_title=light.room_title,
+        )
 
-    def _init_get_brightness_from_cache(self) -> int:
-        scene_of_room = self.bridge.scene_cache.get(self._light.room_id, 0)
-        brightness: int = convert_to_brightness(scene_of_room)
-        return brightness
-
-    @property
-    def name(self) -> str:
-        """Return the display name of this light."""
-        room_title: str = self._light.room_title
-        return room_title
+    def _level(self) -> LevelView:
+        return room_level(self.coordinator.data, self._room_id)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the light."""
+        """Select the scene closest to the requested brightness."""
         brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
-
-        try:
-            scene = convert_to_scene(brightness)
-            await asyncio.wait_for(
-                self.bridge.set_room_scene(self._light.room_id, scene), timeout=3.0
-            )
-            # Update local state immediately after successful command
-            self._brightness = brightness
-            self._available = True
-            self.async_write_ha_state()
-
-        except (RakoBridgeError, asyncio.TimeoutError):
-            if self._available:
-                _LOGGER.error("An error occurred while updating the Rako Light")
-            self._available = False
-            self.async_write_ha_state()
-            return
+        await self.coordinator.async_set_room_scene(
+            self._room_id, convert_to_scene(brightness)
+        )
 
 
 class RakoChannelLight(RakoLight):
-    """Representation of a Rako Channel Light."""
+    """A single Rako lighting circuit."""
 
-    def __init__(self, bridge: RakoBridge, light: python_rako.ChannelLight) -> None:
-        """Initialize a RakoLight."""
-        super().__init__(bridge, light)
-        self._light: python_rako.ChannelLight = light
-
-    def _init_get_brightness_from_cache(self) -> int:
-        scene_of_room = self.bridge.scene_cache.get(self._light.room_id, 0)
-        brightness: int = self.bridge.level_cache.get_channel_level(
-            self._light.room_channel, scene_of_room
+    def __init__(self, coordinator: RakoCoordinator, light: ChannelLight) -> None:
+        """Initialise a channel light."""
+        super().__init__(
+            coordinator,
+            room_id=light.room_id,
+            channel_id=light.channel_id,
+            device_name=f"{light.room_title} - {light.channel_name}",
+            room_title=light.room_title,
         )
-        return brightness
 
-    @property
-    def name(self) -> str:
-        """Return the display name of this light."""
-        return f"{self._light.room_title} - {self._light.channel_name}"
+    def _level(self) -> LevelView:
+        return channel_level(self.coordinator.data, self._room_id, self._channel_id)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the light."""
+        """Drive the circuit to a level."""
         brightness = kwargs.get(ATTR_BRIGHTNESS, 255)
-
-        try:
-            await asyncio.wait_for(
-                self.bridge.set_channel_brightness(
-                    self._light.room_id, self._light.channel_id, brightness
-                ),
-                timeout=3.0,
-            )
-            # Update local state immediately after successful command
-            self._brightness = brightness
-            self._available = True
-            self.async_write_ha_state()
-
-        except (RakoBridgeError, asyncio.TimeoutError):
-            if self._available:
-                _LOGGER.error("An error occurred while updating the Rako Light")
-            self._available = False
-            self.async_write_ha_state()
-            return
+        await self.coordinator.async_set_channel_level(
+            self._room_id, self._channel_id, brightness
+        )

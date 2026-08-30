@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
-from asyncio import Task
-from typing import TYPE_CHECKING, TypedDict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from homeassistant.config_entries import ConfigEntry
 
 if TYPE_CHECKING:
-    from .bridge import RakoBridge
-    from .fan import RakoFan
-    from .light import RakoLight
+    from .coordinator import RakoCoordinator
 
 
-class RakoDomainEntryData(TypedDict):
-    """A single Rako config entry's data."""
+@dataclass
+class RakoRuntimeData:
+    """Everything one config entry owns at runtime.
 
-    rako_bridge_client: RakoBridge
-    rako_light_map: dict[str, RakoLight]
-    rako_fan_map: dict[str, RakoFan]
-    rako_listener_task: Task | None
+    Lives on ``entry.runtime_data``; the integration keeps nothing in
+    ``hass.data``.
+    """
+
+    coordinator: RakoCoordinator
+
+
+type RakoConfigEntry = ConfigEntry[RakoRuntimeData]

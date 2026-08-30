@@ -2,251 +2,155 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-import python_rako
-from homeassistant.components.fan import (
-    FanEntity,
-    FanEntityFeature,
-)
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.entity import DeviceInfo, Entity
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from python_rako.exceptions import RakoBridgeError
-from python_rako.helpers import convert_to_brightness, convert_to_scene
+from python_rako import ChannelVentilation, RakoBridgeError, RoomVentilation
+from python_rako.helpers import convert_to_scene
 
-from .const import DOMAIN
-from .util import create_unique_id
+from homeassistant.components.fan import ATTR_PERCENTAGE, FanEntity, FanEntityFeature
+from homeassistant.const import STATE_ON
+from homeassistant.exceptions import PlatformNotReady
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .const import ATTR_ESTIMATED
+from .entity import RakoEntity
+from .helpers import (
+    LevelView,
+    brightness_to_percentage,
+    channel_level,
+    percentage_to_brightness,
+    room_level,
+)
 
 if TYPE_CHECKING:
-    from .bridge import RakoBridge
-    from .model import RakoDomainEntryData
+    from homeassistant.core import HomeAssistant, State
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+
+    from .coordinator import RakoCoordinator
+    from .model import RakoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: RakoConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the config entry."""
-    rako_domain_entry_data: RakoDomainEntryData = hass.data[DOMAIN][entry.unique_id]
-    bridge = rako_domain_entry_data["rako_bridge_client"]
-
-    hass_fans: list[Entity] = []
+    """Set up the Rako ventilation entities for a config entry."""
+    coordinator = entry.runtime_data.coordinator
     session = async_get_clientsession(hass)
 
     try:
-        _LOGGER.debug("Starting ventilation discovery for bridge %s", bridge.host)
+        _, ventilation = await coordinator.bridge.discover_devices(session)
+    except (RakoBridgeError, OSError, TimeoutError) as err:
+        raise PlatformNotReady(f"Could not discover Rako ventilation: {err}") from err
 
-        # Now try the discovery
-        async for ventilation in bridge.discover_ventilation(session):
-            if isinstance(ventilation, python_rako.ChannelVentilation):
-                hass_fan: RakoFan = RakoChannelFan(bridge, ventilation)
-            elif isinstance(ventilation, python_rako.RoomVentilation):
-                hass_fan = RakoRoomFan(bridge, ventilation)
-            else:
-                continue
+    entities: list[RakoFan] = []
+    for vent in ventilation:
+        if isinstance(vent, ChannelVentilation):
+            entities.append(RakoChannelFan(coordinator, vent))
+        elif isinstance(vent, RoomVentilation):
+            entities.append(RakoRoomFan(coordinator, vent))
 
-            hass_fans.append(hass_fan)
-            _LOGGER.debug("Added fan: %s", hass_fan.name)
-
-    except Exception as e:
-        _LOGGER.error("Error during ventilation discovery: %s", e)
-        import traceback
-
-        _LOGGER.error("Full traceback: %s", traceback.format_exc())
-        # Continue without adding fan entities if discovery fails
-
-    _LOGGER.info("Added %d fan entities", len(hass_fans))
-    async_add_entities(hass_fans, True)
+    _LOGGER.debug("Adding %d Rako fan entities", len(entities))
+    async_add_entities(entities)
 
 
-class RakoFan(FanEntity):
-    """Representation of a Rako Fan."""
+class RakoFan(RakoEntity, FanEntity):
+    """A Rako ventilation circuit or room, as a fan."""
 
-    def __init__(
-        self, bridge: RakoBridge, ventilation: python_rako.Ventilation
+    _attr_supported_features = FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
+
+    def _level(self) -> LevelView:
+        """Return the level to show, and whether it is an approximation."""
+        raise NotImplementedError
+
+    @property
+    def percentage(self) -> int | None:
+        """Fan speed as a percentage, or ``None`` when it is unknown."""
+        return brightness_to_percentage(self._level().brightness)
+
+    @property
+    def is_on(self) -> bool | None:
+        """Whether the fan is running; ``None`` reads as unknown, not off."""
+        percentage = self.percentage
+        if percentage is None:
+            return None
+        return percentage > 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Flag state the bridge has not actually reported."""
+        return {ATTR_ESTIMATED: self._level().estimated}
+
+    def _restored_level(self, last_state: State) -> int | None:
+        if last_state.state != STATE_ON:
+            return 0
+        percentage = last_state.attributes.get(ATTR_PERCENTAGE)
+        if percentage is None:
+            return 255
+        return percentage_to_brightness(int(percentage))
+
+    async def async_turn_on(
+        self,
+        percentage: int | None = None,
+        preset_mode: str | None = None,
+        **kwargs: Any,
     ) -> None:
-        """Initialize a RakoFan."""
-        self.bridge = bridge
-        self._ventilation = ventilation
-        self._percentage = self._init_get_percentage_from_cache()
-        self._available = True
-        self._attr_supported_features = (
-            FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
-        )
-
-    @property
-    def name(self) -> str:
-        """Return the display name of this fan."""
-        raise NotImplementedError
-
-    def _init_get_percentage_from_cache(self) -> int:
-        raise NotImplementedError
-
-    async def async_added_to_hass(self) -> None:
-        """Run when entity about to be added to hass."""
-        await self.bridge.register_for_state_updates(self)
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Run when entity about to be added to hass."""
-        await self.bridge.deregister_for_state_updates(self)
-
-    @property
-    def unique_id(self) -> str:
-        """Fan's unique ID."""
-        return create_unique_id(
-            self.bridge.mac, self._ventilation.room_id, self._ventilation.channel_id
-        )
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self._available
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if fan is on."""
-        return self._percentage is not None and self._percentage > 0
-
-    @property
-    def should_poll(self) -> bool:
-        """Entity pushes its state to HA."""
-        return False
+        """Turn on the fan."""
+        await self.async_set_percentage(100 if percentage is None else percentage)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the fan."""
         await self.async_set_percentage(0)
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information about this Rako Fan."""
-        return {
-            "identifiers": {(DOMAIN, self.unique_id)},
-            "name": self.name,
-            "manufacturer": "Rako",
-            "suggested_area": self._ventilation.room_title,
-            "via_device": (DOMAIN, self.bridge.mac),
-        }
 
 
 class RakoRoomFan(RakoFan):
-    """Representation of a Rako Room Fan."""
+    """A whole Rako ventilation room, where speed selects a scene."""
 
     def __init__(
-        self, bridge: RakoBridge, ventilation: python_rako.RoomVentilation
+        self, coordinator: RakoCoordinator, ventilation: RoomVentilation
     ) -> None:
-        """Initialize a RakoRoomFan."""
-        super().__init__(bridge, ventilation)
-        self._ventilation: python_rako.RoomVentilation = ventilation
+        """Initialise a room fan."""
+        super().__init__(
+            coordinator,
+            room_id=ventilation.room_id,
+            channel_id=ventilation.channel_id,
+            device_name=f"{ventilation.room_title} Fan",
+            room_title=ventilation.room_title,
+        )
 
-    def _init_get_percentage_from_cache(self) -> int:
-        scene_of_room = self.bridge.scene_cache.get(self._ventilation.room_id, 0)
-        brightness: int = convert_to_brightness(scene_of_room)
-        # Convert brightness (0-255) to percentage (0-100)
-        return int((brightness / 255) * 100) if brightness > 0 else 0
-
-    @property
-    def name(self) -> str:
-        """Return the display name of this fan."""
-        room_title: str = self._ventilation.room_title
-        return f"{room_title} Fan"
+    def _level(self) -> LevelView:
+        return room_level(self.coordinator.data, self._room_id)
 
     async def async_set_percentage(self, percentage: int) -> None:
-        """Set the speed percentage of the fan."""
-        try:
-            # Convert percentage (0-100) to brightness (0-255)
-            brightness = int((percentage / 100) * 255) if percentage > 0 else 0
-            scene = convert_to_scene(brightness)
-            await asyncio.wait_for(
-                self.bridge.set_room_scene(self._ventilation.room_id, scene),
-                timeout=3.0,
-            )
-            # Update local state immediately after successful command
-            self._percentage = percentage
-            self._available = True
-            self.async_write_ha_state()
-
-        except (RakoBridgeError, TimeoutError):
-            if self._available:
-                _LOGGER.exception("An error occurred while updating the Rako Fan")
-            self._available = False
-            self.async_write_ha_state()
-
-    async def async_turn_on(
-        self,
-        percentage: int | None = None,
-        preset_mode: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Turn on the fan."""
-        if percentage is None:
-            percentage = 100
-        await self.async_set_percentage(percentage)
+        """Select the scene closest to the requested speed."""
+        scene = convert_to_scene(percentage_to_brightness(percentage))
+        await self.coordinator.async_set_room_scene(self._room_id, scene)
 
 
 class RakoChannelFan(RakoFan):
-    """Representation of a Rako Channel Fan."""
+    """A single Rako ventilation circuit."""
 
     def __init__(
-        self, bridge: RakoBridge, ventilation: python_rako.ChannelVentilation
+        self, coordinator: RakoCoordinator, ventilation: ChannelVentilation
     ) -> None:
-        """Initialize a RakoChannelFan."""
-        super().__init__(bridge, ventilation)
-        self._ventilation: python_rako.ChannelVentilation = ventilation
-
-    def _init_get_percentage_from_cache(self) -> int:
-        scene_of_room = self.bridge.scene_cache.get(self._ventilation.room_id, 0)
-        brightness: int = self.bridge.level_cache.get_channel_level(
-            self._ventilation.room_channel, scene_of_room
+        """Initialise a channel fan."""
+        super().__init__(
+            coordinator,
+            room_id=ventilation.room_id,
+            channel_id=ventilation.channel_id,
+            device_name=f"{ventilation.room_title} - {ventilation.channel_name}",
+            room_title=ventilation.room_title,
         )
-        # Convert brightness (0-255) to percentage (0-100)
-        return int((brightness / 255) * 100) if brightness > 0 else 0
 
-    @property
-    def name(self) -> str:
-        """Return the display name of this fan."""
-        return f"{self._ventilation.room_title} - {self._ventilation.channel_name}"
+    def _level(self) -> LevelView:
+        return channel_level(self.coordinator.data, self._room_id, self._channel_id)
 
     async def async_set_percentage(self, percentage: int) -> None:
-        """Set the speed percentage of the fan."""
-        try:
-            # Convert percentage (0-100) to brightness (0-255)
-            brightness = int((percentage / 100) * 255) if percentage > 0 else 0
-            await asyncio.wait_for(
-                self.bridge.set_channel_brightness(
-                    self._ventilation.room_id, self._ventilation.channel_id, brightness
-                ),
-                timeout=3.0,
-            )
-            # Update local state immediately after successful command
-            self._percentage = percentage
-            self._available = True
-            self.async_write_ha_state()
-
-        except (RakoBridgeError, TimeoutError):
-            if self._available:
-                _LOGGER.exception("An error occurred while updating the Rako Fan")
-            self._available = False
-            self.async_write_ha_state()
-
-    async def async_turn_on(
-        self,
-        percentage: int | None = None,
-        preset_mode: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Turn on the fan."""
-        if percentage is None:
-            percentage = 100
-        await self.async_set_percentage(percentage)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the fan."""
-        await self.async_set_percentage(0)
+        """Drive the circuit to a speed."""
+        await self.coordinator.async_set_channel_level(
+            self._room_id, self._channel_id, percentage_to_brightness(percentage)
+        )

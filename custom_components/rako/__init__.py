@@ -1,63 +1,63 @@
 """The Rako integration."""
+
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from homeassistant.components.light import DOMAIN as LIGHT_DOMAIN
-from homeassistant.components.fan import DOMAIN as FAN_DOMAIN
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME, CONF_PORT
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_MAC, CONF_NAME, Platform
 from homeassistant.helpers import device_registry as dr
 
-from .bridge import RakoBridge
-from .const import DOMAIN
-from .model import RakoDomainEntryData
+from .const import DOMAIN, MANUFACTURER
+from .coordinator import RakoCoordinator
+from .model import RakoRuntimeData
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+    from .model import RakoConfigEntry
 
 _LOGGER = logging.getLogger(__name__)
 
+PLATFORMS: list[Platform] = [Platform.FAN, Platform.LIGHT]
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+
+async def async_setup_entry(hass: HomeAssistant, entry: RakoConfigEntry) -> bool:
     """Set up Rako from a config entry."""
-    rako_bridge = RakoBridge(
-        host=entry.data[CONF_HOST],
-        port=entry.data[CONF_PORT],
-        name=entry.data[CONF_NAME],
-        mac=entry.data[CONF_MAC],
-        entry_id=entry.entry_id,
-        hass=hass,
-    )
-
     device_registry = dr.async_get(hass)
-    device_registry.async_get_or_create(
+    bridge_device = device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
         connections={(dr.CONNECTION_NETWORK_MAC, entry.data[CONF_MAC])},
         identifiers={(DOMAIN, entry.data[CONF_MAC])},
-        manufacturer="Rako",
+        manufacturer=MANUFACTURER,
         name=entry.data[CONF_NAME],
     )
 
-    hass.data.setdefault(DOMAIN, {})
-    rako_domain_entry_data: RakoDomainEntryData = {
-        "rako_bridge_client": rako_bridge,
-        "rako_light_map": {},
-        "rako_fan_map": {},
-        "rako_listener_task": None,
-    }
-    hass.data[DOMAIN][rako_bridge.mac] = rako_domain_entry_data
+    coordinator = RakoCoordinator(hass, entry, bridge_device_id=bridge_device.id)
+    try:
+        await coordinator.async_setup()
+    except Exception:
+        # The listener may already be bound to UDP 9761; never leave it holding
+        # the port when setup fails and Home Assistant retries.
+        await coordinator.async_shutdown()
+        raise
 
-    await hass.config_entries.async_forward_entry_setups(entry, [LIGHT_DOMAIN, FAN_DOMAIN])
+    entry.runtime_data = RakoRuntimeData(coordinator=coordinator)
 
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    await hass.config_entries.async_forward_entry_unload(entry, LIGHT_DOMAIN)
-    await hass.config_entries.async_forward_entry_unload(entry, FAN_DOMAIN)
+async def async_unload_entry(hass: HomeAssistant, entry: RakoConfigEntry) -> bool:
+    """Unload a config entry.
 
-    del hass.data[DOMAIN][entry.unique_id]
-    if not hass.data[DOMAIN]:
-        del hass.data[DOMAIN]
+    The coordinator registers its own shutdown with the entry, which stops the
+    listener and releases the bridge's sockets once the platforms are gone.
+    """
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
-    return True
+
+async def async_reload_entry(hass: HomeAssistant, entry: RakoConfigEntry) -> None:
+    """Reload the entry after its options changed."""
+    await hass.config_entries.async_reload(entry.entry_id)
