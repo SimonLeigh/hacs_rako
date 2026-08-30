@@ -15,21 +15,40 @@ jobs:
       contents: write
     steps:
       - name: "Checkout the repository"
-        uses: "actions/checkout@v4.1.0"
+        uses: "actions/checkout@v7.0.1"
 
-      - name: "Adjust version number"
+      - name: "Stamp the release tag into manifest.json"
         shell: "bash"
         run: |
-          yq -i -o json '.version="${{ github.event.release.tag_name }}"' \
-            "${{ github.workspace }}/custom_components/integration_blueprint/manifest.json"
+          jq --arg version "${{ github.event.release.tag_name }}" \
+            '.version = $version' \
+            "${{ github.workspace }}/custom_components/rako/manifest.json" \
+            > "${{ github.workspace }}/custom_components/rako/manifest.json.tmp"
+          mv "${{ github.workspace }}/custom_components/rako/manifest.json.tmp" \
+            "${{ github.workspace }}/custom_components/rako/manifest.json"
+
+      - name: "Validate manifest.json"
+        shell: "bash"
+        run: |
+          MANIFEST="${{ github.workspace }}/custom_components/rako/manifest.json"
+
+          # Must be valid JSON.
+          jq empty "$MANIFEST"
+
+          # The stamped version must match the release tag.
+          STAMPED_VERSION="$(jq -r '.version' "$MANIFEST")"
+          if [[ "$STAMPED_VERSION" != "${{ github.event.release.tag_name }}" ]]; then
+            echo "::error::manifest.json version '$STAMPED_VERSION' does not match release tag '${{ github.event.release.tag_name }}'"
+            exit 1
+          fi
 
       - name: "ZIP the integration directory"
         shell: "bash"
         run: |
-          cd "${{ github.workspace }}/custom_components/integration_blueprint"
-          zip integration_blueprint.zip -r ./
+          cd "${{ github.workspace }}/custom_components/rako"
+          zip rako.zip -r ./
 
       - name: "Upload the ZIP file to the release"
-        uses: softprops/action-gh-release@v0.1.15
+        uses: "softprops/action-gh-release@v3.0.3"
         with:
-          files: ${{ github.workspace }}/custom_components/integration_blueprint/integration_blueprint.zip
+          files: "${{ github.workspace }}/custom_components/rako/rako.zip"
