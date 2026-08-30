@@ -1,0 +1,18 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+norecursedirs = [".git", ".venv", "config"]
+
+[tool.coverage.run]
+source = ["custom_components.rako"]
+
+[tool.coverage.report]
+# No fail-under here: this is the dev-loop default, kept lenient so a quick
+# `pytest` while writing a test doesn't fail the run over coverage. The
+# threshold that actually gates something lives in the CI workflow's own
+# `pytest --cov-fail-under=85` invocation, not here.
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
