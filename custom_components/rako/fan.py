@@ -61,7 +61,11 @@ async def async_setup_entry(
 class RakoFan(RakoEntity, FanEntity):
     """A Rako ventilation circuit or room, as a fan."""
 
-    _attr_supported_features = FanEntityFeature.TURN_OFF | FanEntityFeature.TURN_ON
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_OFF
+        | FanEntityFeature.TURN_ON
+    )
 
     def _level(self) -> LevelView:
         """Return the level to show, and whether it is an approximation."""
