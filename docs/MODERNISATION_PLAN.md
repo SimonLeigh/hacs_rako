@@ -177,6 +177,19 @@ with tests; nothing merges red.
 | WP-2.5 | Fix release workflow (zip the real `custom_components/rako`, stamp manifest version), refresh `requirements.txt`/`hacs.json` baseline (H8/H11), README refresh | Sonnet | — |
 | WP-2.6 | **Keypad events**: fire `rako_event` on the HA event bus for every decoded status message; register device triggers (per bridge: room/channel/command) so keypad presses drive automations for non-Rako systems (§3.2a-6) | Sonnet (Opus reviews event schema) | WP-2.2 |
 
+### Library backlog for python-rako-2025 0.5.1 (from Phase 2 integration work)
+
+1. `snapshot.apply()` should return `self` when the resulting state is identical — avoids
+   re-publishing to every entity on PIR re-sends (240 identical scene sets/day observed).
+2. `StatusListener` stall detection: a `stall_timeout` flipping health after N seconds of
+   silence (bound-but-deaf listener currently reports healthy forever).
+3. HTTP transport ergonomics: `transport="http"` kwarg with a lazy session factory instead
+   of requiring an aiohttp session at commander construction.
+4. `set_*` returning `None` conflates no-listener / verify=False / non-echoing command —
+   return a small result object or distinct sentinels.
+5. Keyword-friendly `LevelCacheItem` construction (`room_id`/`channel_id` names).
+6. Document that `detach_listener()` must precede `Bridge.close()`.
+
 ### Phase 3 — live validation (with the maintainer)
 
 **Environment constraint (confirmed 2026-08-25):** the production HA instance runs in
