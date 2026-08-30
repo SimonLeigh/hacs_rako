@@ -31,8 +31,8 @@ from python_rako import (
     RakoCommandError,
     StateSource,
     StatusListener,
+    UnknownStatusMessage,
 )
-from python_rako.protocol import UnknownStatusMessage
 
 from homeassistant.const import CONF_HOST, CONF_MAC, CONF_NAME, CONF_PORT
 from homeassistant.core import HomeAssistant, callback
