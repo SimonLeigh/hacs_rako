@@ -1,0 +1,12 @@
+# Phase 0 overnight listener — run on a Linux host on the same subnet as the bridge.
+# network_mode: host is REQUIRED to receive LAN UDP broadcasts. If another process on the
+# host (e.g. Home Assistant) already binds 9761, the script falls back to packet sniffing.
+services:
+  rako-listener:
+    image: python:3.13-slim
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - /path/on/host/rako-listener:/work   # directory containing listen.py; log lands here
+    working_dir: /work
+    command: sh -c "pip install -q python-rako-2025==0.4.1 && python listen.py broadcasts.log"

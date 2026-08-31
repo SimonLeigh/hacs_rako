@@ -13,15 +13,11 @@ event schema can be tested without a bridge or a running Home Assistant.
 
 from __future__ import annotations
 
+import dataclasses
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from python_rako import ChannelStatusMessage, CommandType, SceneStatusMessage
-from python_rako.protocol import (
-    Custom232Message,
-    FadeMessage,
-    HolidayMessage,
-    LevelToggleMessage,
-)
+from python_rako import CommandType, LevelToggleMessage
 
 from .const import (
     ATTR_BRIDGE_MAC,
@@ -29,12 +25,9 @@ from .const import (
     ATTR_COMMAND,
     ATTR_COMMAND_CODE,
     ATTR_DATA,
-    ATTR_DIRECTION,
-    ATTR_IS_ON,
     ATTR_LEVEL,
     ATTR_ORIGIN,
     ATTR_ROOM,
-    ATTR_SCENE,
     COMMAND_UNKNOWN,
 )
 
@@ -48,6 +41,15 @@ COMMAND_NAMES: tuple[str, ...] = (
     *sorted(command.name.lower() for command in CommandType),
     COMMAND_UNKNOWN,
 )
+
+#: Fields every status message carries; they are reported under their own keys
+#: and must not be repeated by the payload walk below.
+_COMMON_FIELDS = frozenset(
+    {"room", "channel", "command", "data", "flags", "origin", "raw"}
+)
+
+#: Library field names that read better in an event payload.
+_FIELD_ALIASES = {"brightness": ATTR_LEVEL}
 
 
 def command_name(message: StatusMessage) -> str:
@@ -70,6 +72,11 @@ def build_event_data(
     ``origin`` distinguishes an occupancy sensor from a keypad, an app or us
     (fact 17); without it a PIR retrigger every few seconds looks exactly like
     somebody leaning on a button.
+
+    Whatever a message type adds on top of the common fields -- a scene, a
+    level, a fade direction -- is copied out by walking the dataclass, so a
+    message type the library gains later arrives with its payload intact
+    instead of silently losing it.
     """
     event_data: dict[str, Any] = {
         ATTR_BRIDGE_MAC: bridge_mac,
@@ -84,18 +91,17 @@ def build_event_data(
         # Device triggers match on this, the way deconz_event does.
         event_data["device_id"] = device_id
 
-    if isinstance(message, SceneStatusMessage):
-        event_data[ATTR_SCENE] = message.scene
-    elif isinstance(message, ChannelStatusMessage):
-        event_data[ATTR_LEVEL] = message.brightness
-    elif isinstance(message, LevelToggleMessage):
+    for field in dataclasses.fields(message):
+        if field.name in _COMMON_FIELDS:
+            continue
+        value = getattr(message, field.name)
+        if isinstance(value, Enum):
+            value = value.value
+        event_data[_FIELD_ALIASES.get(field.name, field.name)] = value
+
+    if isinstance(message, LevelToggleMessage):
+        # This one carries the level it takes *when on* plus a separate on/off
+        # flag; the level that ended up on the circuit is the useful one.
         event_data[ATTR_LEVEL] = message.effective_level
-        event_data[ATTR_IS_ON] = message.is_on
-    elif isinstance(message, FadeMessage):
-        event_data[ATTR_DIRECTION] = message.direction.value
-    elif isinstance(message, Custom232Message):
-        event_data["string_id"] = message.string_id
-    elif isinstance(message, HolidayMessage):
-        event_data["mode"] = message.mode
 
     return event_data

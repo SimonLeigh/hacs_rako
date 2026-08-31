@@ -74,6 +74,11 @@ Payload:
 | `scene` | scene number (scene messages) |
 | `level` | 0-255 level (level messages) |
 | `direction` | `up`/`down` (fade messages) |
+| `is_on` | whether the circuit ended up on (level-toggle messages) |
+
+Anything else a particular message carries is included under its own name, so
+a message type the library learns to decode later arrives with its payload
+intact rather than silently losing it.
 
 The same events are available as device triggers on the bridge device in the
 automation editor.

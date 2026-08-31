@@ -2,6 +2,11 @@
 
 target-version = "py313"
 
+# The Phase-0 capture scripts are standalone diagnostics run by hand against a
+# live bridge, not part of the shipped integration; the integration rules
+# (annotations, docstrings, no print) are noise there.
+extend-exclude = ["scripts/phase0"]
+
 [lint]
 select = [
     "ALL",
@@ -21,7 +26,8 @@ ignore = [
     "EM102",
     "TRY003", # ... and are long enough to be useful
     "RUF012", # `_attr_*` class attributes are the documented HA convention
-    "ARG002", # entity/platform method signatures are dictated by HA, not by us
+    "ARG001", # entity/platform function signatures are dictated by HA, not by us
+    "ARG002",
     "ARG004",
 ]
 
