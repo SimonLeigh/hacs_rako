@@ -1,5 +1,9 @@
 {
     "config": {
+        "abort": {
+            "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
+            "reconfigure_successful": "[%key:common::config_flow::abort::reconfigure_successful%]"
+        },
         "error": {
             "no_devices_found": "[%key:common::config_flow::abort::no_devices_found%]",
             "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
@@ -14,7 +18,63 @@
                     "name": "[%key:common::config_flow::data::name%]",
                     "mac": "MAC Address"
                 }
+            },
+            "reconfigure": {
+                "title": "Rako Bridge Configuration",
+                "description": "Update where the bridge can be reached. Its MAC address identifies the bridge and cannot be changed here.",
+                "data": {
+                    "host": "[%key:common::config_flow::data::host%]",
+                    "port": "[%key:common::config_flow::data::port%]"
+                }
             }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Rako options",
+                "description": "State arrives as broadcasts from the bridge; the poll is a safety net that bounds how long a missed broadcast can leave a light showing the wrong state.",
+                "data": {
+                    "poll_interval": "Reconciliation poll interval",
+                    "transport": "Command transport",
+                    "min_command_interval": "Minimum interval between commands"
+                },
+                "data_description": {
+                    "poll_interval": "How often to re-read the bridge's scene cache, in seconds. Minimum 60.",
+                    "transport": "How commands are sent to the bridge. Status is always received over UDP.",
+                    "min_command_interval": "The bridge silently drops commands sent too close together. Measured safe minimum is 1 second; the default leaves a margin."
+                }
+            }
+        }
+    },
+    "selector": {
+        "transport": {
+            "options": {
+                "udp": "UDP (default)",
+                "http": "HTTP"
+            }
+        }
+    },
+    "device_automation": {
+        "trigger_type": {
+            "custom_232": "Custom RS-232 string sent",
+            "fade": "Fade button pressed",
+            "fade_down": "Fade down (legacy)",
+            "fade_up": "Fade up (legacy)",
+            "holiday": "Holiday mode changed",
+            "ident": "Identify",
+            "level_set_legacy": "Level set (legacy)",
+            "level_toggle": "Level toggled (undocumented command)",
+            "off": "Off",
+            "sc1_legacy": "Scene 1 selected (legacy)",
+            "sc2_legacy": "Scene 2 selected (legacy)",
+            "sc3_legacy": "Scene 3 selected (legacy)",
+            "sc4_legacy": "Scene 4 selected (legacy)",
+            "set_level": "Level set",
+            "set_scene": "Scene selected",
+            "stop_fading": "Fade button released",
+            "store": "Scene stored",
+            "unknown": "Unrecognised command"
         }
     }
 }
