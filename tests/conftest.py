@@ -215,9 +215,18 @@ async def rako_integration(
     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
     await hass.async_block_till_done()
 
+    listener = created_listeners[-1]
+    # Baseline is steady state, not the instant of start-up: by the time a
+    # test drives a service call, real installations have long since heard
+    # something from the bridge (occupancy sensors alone see to that). Tests
+    # for the unproven-push-path behaviour (review findings 4/9) build their
+    # own entry without this and assert against a listener that has heard
+    # nothing.
+    listener.mark_messages_received()
+
     return SimpleNamespace(
         entry=mock_config_entry,
         coordinator=mock_config_entry.runtime_data.coordinator,
         bridge=created_bridges[-1],
-        listener=created_listeners[-1],
+        listener=listener,
     )

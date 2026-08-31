@@ -7,13 +7,19 @@ real classes' public surface closely enough that the tests exercise the same
 contract the coordinator relies on:
 
 * ``StatusListener``: ``subscribe()`` returns an unsubscribe handle, ``start``/
-  ``stop`` are coroutines, and health changes are reported through the
-  ``on_health_change`` callback passed at construction -- never polled.
-* ``Bridge``: ``set_room_scene``/``set_channel_level`` are echo-verified --
-  they return the bridge's echo of what actually happened, or raise
-  ``RakoCommandError`` when nothing confirmed it (BRIDGE_BEHAVIOUR.md facts
-  10-12). ``get_state_snapshot`` returns a real ``BridgeStateSnapshot`` built
-  from ``python_rako.state`` types, never a mock.
+  ``stop`` are coroutines, health changes are reported through the
+  ``on_health_change`` callback passed at construction (never polled), and
+  ``.health.messages_received`` is the evidence
+  ``RakoCoordinator._push_path_proven`` gates verification and
+  failed-poll-tolerance on (review findings 4/9).
+* ``Bridge``: ``set_room_scene``/``set_channel_level`` take a ``verify`` flag,
+  exactly like the real ``Bridge`` methods -- ``verify=True`` is echo-verified,
+  returning the bridge's echo or raising ``RakoCommandError`` when nothing
+  confirmed it (BRIDGE_BEHAVIOUR.md facts 10-12); ``verify=False`` sends and
+  returns ``None`` without confirming anything, the real behaviour when the
+  coordinator judges the push path unproven. ``get_state_snapshot`` returns a
+  real ``BridgeStateSnapshot`` built from ``python_rako.state`` types, never a
+  mock.
 """
 
 from __future__ import annotations
@@ -63,6 +69,19 @@ def default_bridge_info() -> BridgeInfo:
     )
 
 
+@dataclass
+class _FakeListenerHealth:
+    """A minimal stand-in for ``python_rako.ListenerHealth``.
+
+    Only the attributes the coordinator actually reads.
+    """
+
+    is_running: bool
+    restart_count: int = 0
+    last_error: str | None = None
+    messages_received: int = 0
+
+
 class FakeStatusListener:
     """Stands in for :class:`python_rako.StatusListener`.
 
@@ -71,6 +90,15 @@ class FakeStatusListener:
     broadcast, and :meth:`set_health` to simulate the listener going up or
     down (the coordinator reacts only through the ``on_health_change``
     callback, never by polling).
+
+    ``.health.messages_received`` -- read live by
+    ``RakoCoordinator._push_path_proven``, never delivered through the health
+    callback (the real listener does not publish health on every message
+    either) -- increments on every non-duplicate :meth:`emit`.
+    :meth:`mark_messages_received` bumps it directly, for a test that needs to
+    establish "the push path is already proven" as a starting condition without
+    the side effects (an applied snapshot, a fired event) a real message would
+    have.
     """
 
     def __init__(
@@ -90,6 +118,19 @@ class FakeStatusListener:
         self.start_calls = 0
         self.stop_calls = 0
         self.running = False
+        self._restart_count = 0
+        self._last_error: str | None = None
+        self._messages_received = 0
+
+    @property
+    def health(self) -> _FakeListenerHealth:
+        """A live snapshot, matching ``StatusListener.health`` being read on demand."""
+        return _FakeListenerHealth(
+            is_running=self.running,
+            restart_count=self._restart_count,
+            last_error=self._last_error,
+            messages_received=self._messages_received,
+        )
 
     def subscribe(self, callback: Any, *, include_duplicates: bool = False) -> Any:
         entry = [callback, include_duplicates]
@@ -114,10 +155,21 @@ class FakeStatusListener:
 
     def emit(self, message: Any, *, duplicate: bool = False) -> None:
         """Deliver ``message`` to every subscriber, as a real broadcast would."""
+        if not duplicate:
+            self._messages_received += 1
         for callback, include_duplicates in list(self._subscriptions):
             if duplicate and not include_duplicates:
                 continue
             callback(message)
+
+    def mark_messages_received(self, count: int = 1) -> None:
+        """Bump the received-message count without dispatching anything.
+
+        For establishing a "push path already proven" starting condition
+        (review findings 4/9) without the side effects a real message
+        delivery has -- an applied snapshot, a fired ``rako_event``.
+        """
+        self._messages_received += count
 
     def set_health(
         self,
@@ -127,6 +179,8 @@ class FakeStatusListener:
         last_error: str | None = None,
     ) -> None:
         """Simulate the listener's supervised loop going up or down."""
+        self._restart_count = restart_count
+        self._last_error = last_error
         if self._on_health_change is None:
             return
         self._on_health_change(
@@ -134,31 +188,22 @@ class FakeStatusListener:
                 is_running=is_running,
                 restart_count=restart_count,
                 last_error=last_error,
+                messages_received=self._messages_received,
             )
         )
-
-
-@dataclass
-class _FakeListenerHealth:
-    """A minimal stand-in for ``python_rako.ListenerHealth``.
-
-    Only the attributes the coordinator actually reads.
-    """
-
-    is_running: bool
-    restart_count: int = 0
-    last_error: str | None = None
 
 
 class FakeBridge:
     """Stands in for :class:`python_rako.Bridge`.
 
     ``echoes`` maps a ``(room_id, channel_id)`` target to the outcome of the
-    *next* command sent to it: a status message to echo back (including one
-    that differs from what was requested, simulating pacing coalescing to a
-    newer command), or an exception instance to raise (simulating silence
-    after retry, i.e. ``RakoCommandError``). Left unset, a command echoes
-    back exactly what was requested -- the common case.
+    *next verified* command sent to it: a status message to echo back
+    (including one that differs from what was requested, simulating pacing
+    coalescing to a newer command), or an exception instance to raise
+    (simulating silence after retry, i.e. ``RakoCommandError``). Left unset, a
+    verified command echoes back exactly what was requested -- the common
+    case. An *unverified* command (``verify=False``) is recorded and always
+    returns ``None``, exactly like the real ``Bridge``.
     """
 
     def __init__(
@@ -184,7 +229,14 @@ class FakeBridge:
 
         self.echoes = {}
         self.commands = []
+        #: verify flag actually used for each entry in .commands, same order/index.
+        self.command_verify: list[bool] = []
         self.snapshot_error = None
+        #: Raised by discover_devices, e.g. ExpatError/KeyError for a bad rako.xml.
+        self.discover_error: Exception | None = None
+        #: A command that never returns, for exercising the coordinator's
+        #: overall command timeout. Only set_channel_level honours it.
+        self.hang_forever = False
 
         self.get_state_snapshot_calls = 0
         self.refresh_level_table_calls = 0
@@ -210,6 +262,8 @@ class FakeBridge:
         self, session: Any, force_refresh: bool = False
     ) -> tuple[list[Any], list[Any]]:
         await _yield()
+        if self.discover_error is not None:
+            raise self.discover_error
         return self.devices
 
     async def get_info(self, session: Any, force_refresh: bool = False) -> BridgeInfo:
@@ -236,9 +290,12 @@ class FakeBridge:
 
     # -- commands ----------------------------------------------------------
 
-    async def set_room_scene(self, room_id: int, scene: int) -> Any:
+    async def set_room_scene(self, room_id: int, scene: int, *, verify: bool = True) -> Any:
         await _yield()
         self.commands.append(("scene", room_id, scene))
+        self.command_verify.append(verify)
+        if not verify:
+            return None
         return self._resolve_echo(
             room_id,
             0,
@@ -252,9 +309,18 @@ class FakeBridge:
             ),
         )
 
-    async def set_channel_level(self, room_id: int, channel_id: int, level: int) -> Any:
+    async def set_channel_level(
+        self, room_id: int, channel_id: int, level: int, *, verify: bool = True
+    ) -> Any:
         await _yield()
+        if self.hang_forever:
+            # Exercises the coordinator's overall command timeout: nothing
+            # short of that timeout ever completes this await.
+            await asyncio.Event().wait()
         self.commands.append(("level", room_id, channel_id, level))
+        self.command_verify.append(verify)
+        if not verify:
+            return None
         return self._resolve_echo(
             room_id,
             channel_id,
