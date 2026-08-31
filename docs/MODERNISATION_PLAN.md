@@ -189,6 +189,18 @@ with tests; nothing merges red.
    return a small result object or distinct sentinels.
 5. Keyword-friendly `LevelCacheItem` construction (`room_id`/`channel_id` names).
 6. Document that `detach_listener()` must precede `Bridge.close()`.
+7. **Dependency currency sweep** (audited 2026-08-31, pip-audit + latest-version check):
+   - `hacs_rako` dev/CI: bump `homeassistant` 2026.2.3 → current (2026.8.3 at audit time)
+     and `pytest-homeassistant-custom-component` 0.13.316 → matching (0.13.361); rerun the
+     95-test suite against it; bump `colorlog`. Old HA pin drags CVE-bearing transitives
+     into dev envs (zeroconf 0.148.0: 5 PYSEC advisories; setuptools; uv) — all resolved
+     by the HA bump. Consider raising `hacs.json` minimum only if the suite requires it.
+   - `python-rako`: no known vulnerabilities (pip-audit clean). Evaluate raising the
+     `asyncio-dgram` floor to 3.x (major bump — verify API compat first); refresh
+     pre-commit pins (ruff 0.16.4 → current).
+   - Devcontainer image is a floating current tag (fine); dependabot now weekly on both
+     repos, which keeps action/pip pins moving without the old PR pile-up.
+   - Process note: run `pip-audit` in both dev envs as part of each release checklist.
 
 ### Phase 3 — live validation (with the maintainer)
 

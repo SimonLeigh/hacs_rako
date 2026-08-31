@@ -9,3 +9,9 @@ frontend:
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
+
+logger:
+  default: info
+  logs:
+    custom_components.rako: debug
+    python_rako: debug
