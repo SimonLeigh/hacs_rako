@@ -80,7 +80,10 @@ class RakoConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a Rako config flow."""
 
     VERSION = 1
-    rako_timeout = 3.0
+    # Measured on a live WTC bridge: a healthy get_info (rako.xml fetch + parse)
+    # can take >3s, and discovery replies are sub-second. Generous beats flaky.
+    rako_timeout = 10.0
+    discovery_timeout = 3.0
 
     @staticmethod
     @callback
@@ -96,7 +99,7 @@ class RakoConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is None:
             try:
                 bridge_desc = await asyncio.wait_for(
-                    discover_bridge(), timeout=self.rako_timeout
+                    discover_bridge(), timeout=self.discovery_timeout
                 )
             except (TimeoutError, RakoBridgeError, ValueError) as ex:
                 _LOGGER.warning("Couldn't auto discover Rako bridge %s", ex)
