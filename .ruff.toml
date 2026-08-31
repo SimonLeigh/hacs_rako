@@ -2,6 +2,11 @@
 
 target-version = "py313"
 
+# The Phase-0 capture scripts are standalone diagnostics run by hand against a
+# live bridge, not part of the shipped integration; the integration rules
+# (annotations, docstrings, no print) are noise there.
+extend-exclude = ["scripts/phase0"]
+
 [lint]
 select = [
     "ALL",
