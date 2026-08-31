@@ -51,6 +51,8 @@ ignore = [
     "FBT001", # tests/fakes.py mirrors python_rako's own boolean-kwarg call signatures
     "FBT002",
     "E501", # long assertions/docstrings quoting BRIDGE_BEHAVIOUR.md read better unwrapped
+    "SLF001", # exercising buffering/ordering directly against coordinator internals
+              # (e.g. the pre-first-snapshot broadcast test) needs this, deliberately
 ]
 
 [lint.isort]

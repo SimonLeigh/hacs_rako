@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING
+from xml.parsers.expat import ExpatError
+
 from python_rako import RakoBridgeError
 
 from custom_components.rako import coordinator as coordinator_module
@@ -12,6 +16,9 @@ from homeassistant.helpers import device_registry as dr
 
 from .conftest import TEST_MAC, TEST_NAME
 from .fakes import FakeBridge, FakeStatusListener
+
+if TYPE_CHECKING:
+    import pytest
 
 
 async def test_setup_creates_runtime_data_and_starts_the_listener(hass, rako_integration) -> None:
@@ -113,3 +120,68 @@ async def test_setup_failure_still_releases_the_bridge(
     assert bridge.closed is True
     assert bridge.detached is True
     assert listener.stop_calls == 1
+
+
+async def test_bad_rako_xml_during_setup_retries_cleanly(
+    hass, mock_config_entry, monkeypatch, created_bridges, created_listeners
+) -> None:
+    """Review finding 7: DISCOVERY_ERRORS covers rako.xml parse failures too.
+
+    A bridge that answers with a login page or a truncated document raises a
+    parse error rather than a network error; that used to escape the
+    "could not set up yet" handling entirely. Discovery now runs once during
+    entry setup (__init__.py), after the listener and first snapshot succeed,
+    and any DISCOVERY_ERRORS there must retry cleanly, not crash.
+    """
+    def bridge_factory(*args, **kwargs):
+        bridge = FakeBridge(*args, **kwargs)
+        bridge.discover_error = ExpatError("not well-formed (invalid token)")
+        created_bridges.append(bridge)
+        return bridge
+
+    def listener_factory(*args, **kwargs):
+        listener = FakeStatusListener(*args, **kwargs)
+        created_listeners.append(listener)
+        return listener
+
+    monkeypatch.setattr(coordinator_module, "Bridge", bridge_factory)
+    monkeypatch.setattr(coordinator_module, "StatusListener", listener_factory)
+
+    mock_config_entry.add_to_hass(hass)
+    assert not await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
+    assert not hasattr(mock_config_entry, "runtime_data")
+    bridge = created_bridges[0]
+    listener = created_listeners[0]
+    # The coordinator's own setup succeeded (listener + first snapshot); only
+    # discovery failed. Its socket/port must still be released before retry.
+    assert bridge.closed is True
+    assert listener.stop_calls == 1
+
+
+async def test_options_reload_produces_no_spurious_warnings(
+    hass, rako_integration, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Review finding 10: our own listener.stop() during reload is not a fault.
+
+    ``_handle_listener_health`` ignoring the health callback once
+    ``self._closed`` is set means the reload's own ``listener.stop()`` must not
+    log "listener stopped" or touch an already-shut coordinator.
+    """
+    entry = rako_integration.entry
+
+    with caplog.at_level(logging.WARNING, logger="custom_components.rako"):
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, CONF_POLL_INTERVAL: 120}
+        )
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    rako_warnings = [
+        record.message
+        for record in caplog.records
+        if record.levelno >= logging.WARNING and record.name.startswith("custom_components.rako")
+    ]
+    assert rako_warnings == []

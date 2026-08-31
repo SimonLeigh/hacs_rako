@@ -194,3 +194,18 @@ async def test_set_percentage_service_now_works(hass, rako_integration) -> None:
     state = hass.states.get("fan.bathroom_fan")
     assert state.attributes[ATTR_PERCENTAGE] == 50
     assert ATTR_PERCENTAGE_STEP in state.attributes
+
+
+async def test_low_nonzero_level_is_on_with_a_nonzero_percentage(hass, rako_integration) -> None:
+    """Review finding 5: a level of 1-2 must read as on with a real percentage.
+
+    HA's ranged-value helper floors, so a naive scaling of a very low level
+    reports 0% -- and, since is_on used to be derived from the rounded
+    percentage rather than the level, a running fan could look stopped.
+    """
+    rako_integration.listener.emit(_level_broadcast(ROOM_UTILITY, CHANNEL_UTILITY_EXTRACT, 2))
+    await hass.async_block_till_done()
+
+    state = hass.states.get("fan.utility_extract")
+    assert state.state == "on"
+    assert state.attributes[ATTR_PERCENTAGE] >= 1
