@@ -1,0 +1,33 @@
+name: "Test"
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    name: "Pytest (Python 3.13)"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "Checkout the repository"
+        uses: "actions/checkout@v4"
+
+      - name: "Install uv"
+        uses: "astral-sh/setup-uv@v3"
+        with:
+          python-version: "3.13"
+
+      - name: "Create the virtualenv"
+        run: uv venv .venv --python 3.13
+
+      - name: "Install dependencies"
+        run: |
+          uv pip install --python .venv/bin/python -r requirements.txt -r requirements_test.txt
+
+      - name: "Run the test suite"
+        run: |
+          .venv/bin/python -m pytest tests/ \
+            --cov=custom_components.rako \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=85
