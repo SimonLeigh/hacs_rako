@@ -1,9 +1,12 @@
-# Test-only dependencies for WP-2.4 (custom_components/rako's own test suite).
-# `requirements.txt` covers the runtime deps (homeassistant, python-rako-2025);
-# this file adds what running `pytest` needs on top of those.
+# Superseded by requirements_test_min.txt / requirements_test_latest.txt.
 #
-# Install with:
-#   uv venv .venv --python 3.13
-#   uv pip install --python .venv/bin/python -r requirements.txt -r requirements_test.txt
-pytest-homeassistant-custom-component==0.13.316
-pytest-cov==7.0.0
+# CI now tests both ends of the rolling ~3-month HA support window directly
+# (see .github/workflows/test.yml and README.md "Supported Home Assistant
+# versions"), so this file is no longer installed by CI. It's kept only as a
+# convenience pointer to the "latest" lane, for existing local dev muscle
+# memory (`uv pip install -r requirements.txt -r requirements_test.txt`).
+# Prefer installing requirements_test_min.txt or requirements_test_latest.txt
+# directly -- each is self-contained (it pins its own homeassistant,
+# python-rako-2025 and colorlog, so requirements.txt is not needed alongside
+# it).
+-r requirements_test_latest.txt

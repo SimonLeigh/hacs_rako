@@ -1,0 +1,27 @@
+# Minimum supported Home Assistant version for custom_components/rako's test
+# suite, plus the matching pytest-homeassistant-custom-component (phcc)
+# release and the rest of the test-only toolchain.
+#
+# This is the *floor* of the rolling ~3-month support window described in
+# README.md ("Supported Home Assistant versions") and mirrored in
+# hacs.json's "homeassistant" key: the newest patch release of the HA
+# series from ~3 months before "latest" (see requirements_test_latest.txt).
+#
+# phcc pins an exact `homeassistant==` version in its own requires_dist, so
+# the phcc version below is the newest phcc release that pins this exact HA
+# version (checked via https://pypi.org/pypi/pytest-homeassistant-custom-component/<ver>/json).
+#
+# This file is self-contained: it does not need requirements.txt installed
+# alongside it. Install with:
+#   uv venv .venv-min --python 3.14
+#   uv pip install --python .venv-min/bin/python -r requirements_test_min.txt
+#
+# Python 3.14, not 3.13: both the min and latest homeassistant releases
+# pinned below declare `Requires-Python: >=3.14.2` (checked via
+# https://pypi.org/pypi/homeassistant/<ver>/json), so 3.13 cannot install
+# either lane's homeassistant pin at all.
+homeassistant==2026.5.4
+pytest-homeassistant-custom-component==0.13.333
+pytest-cov==7.1.0
+python-rako-2025==0.5.0
+colorlog==6.12.0
