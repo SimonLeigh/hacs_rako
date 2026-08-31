@@ -86,7 +86,6 @@ class RakoRoomLight(RakoRoomEntity, RakoLight):
             room_id=light.room_id,
             channel_id=light.channel_id,
             device_name=light.room_title,
-            room_title=light.room_title,
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -107,7 +106,6 @@ class RakoChannelLight(RakoChannelEntity, RakoLight):
             room_id=light.room_id,
             channel_id=light.channel_id,
             device_name=f"{light.room_title} - {light.channel_name}",
-            room_title=light.room_title,
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
