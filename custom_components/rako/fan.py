@@ -107,7 +107,6 @@ class RakoRoomFan(RakoRoomEntity, RakoFan):
             room_id=ventilation.room_id,
             channel_id=ventilation.channel_id,
             device_name=f"{ventilation.room_title} Fan",
-            room_title=ventilation.room_title,
         )
 
     async def async_set_percentage(self, percentage: int) -> None:
@@ -128,7 +127,6 @@ class RakoChannelFan(RakoChannelEntity, RakoFan):
             room_id=ventilation.room_id,
             channel_id=ventilation.channel_id,
             device_name=f"{ventilation.room_title} - {ventilation.channel_name}",
-            room_title=ventilation.room_title,
         )
 
     async def async_set_percentage(self, percentage: int) -> None:

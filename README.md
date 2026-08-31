@@ -58,6 +58,21 @@ configuration.
 
 Rooms, channels, scenes and fans are then imported automatically from the bridge.
 
+## Supported Home Assistant versions
+
+This is a personal integration, developed and tested aggressively against current
+Home Assistant. Support follows a **rolling ~3-month window, best-effort outside
+that**: the tested floor is the newest patch release of the Home Assistant series
+from roughly three months before the current stable, and the tested ceiling is
+current stable itself. Older Home Assistant versions may still work, but they
+aren't tested and aren't a support commitment.
+
+The exact tested floor is `hacs.json`'s `"homeassistant"` key, which HACS also
+enforces before letting anyone install onto an older core. CI (`.github/workflows/test.yml`)
+runs the full test suite against both ends of that window — `requirements_test_min.txt`
+and `requirements_test_latest.txt` — on every push/PR and monthly on a schedule, so the
+window keeps moving forward as new Home Assistant releases land.
+
 ## Credits and licence
 
 This repository formalises, as a HACS custom component, code originally submitted by

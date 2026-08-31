@@ -38,7 +38,6 @@ class RakoEntity(CoordinatorEntity[RakoCoordinator], RestoreEntity):
         room_id: int,
         channel_id: int,
         device_name: str,
-        room_title: str,
     ) -> None:
         """Register the entity against its own device under the bridge."""
         super().__init__(coordinator)
@@ -51,7 +50,12 @@ class RakoEntity(CoordinatorEntity[RakoCoordinator], RestoreEntity):
             identifiers={(DOMAIN, self._attr_unique_id)},
             name=device_name,
             manufacturer=MANUFACTURER,
-            suggested_area=room_title,
+            # No suggested_area: HA >=2026.6 folds the area name into the
+            # computed entity name/entity_id (area + device + entity, space
+            # joined -- see homeassistant.helpers.entity_registry
+            # ``_async_get_full_entity_name``). Every device here is named
+            # after its room already (see the class docstrings), so a
+            # same-named suggested area would double up as "Kitchen Kitchen".
             via_device=(DOMAIN, coordinator.mac),
         )
 

@@ -70,7 +70,17 @@ async def test_discovery_failure_shows_the_form_with_an_error(
     assert result["errors"] == {"base": "no_devices_found"}
 
 
-async def test_manual_entry_creates_an_entry(hass, patch_discover_bridge, patch_flow_bridge) -> None:
+async def test_manual_entry_creates_an_entry(
+    hass, patch_discover_bridge, patch_flow_bridge, patch_bridge, patch_listener
+) -> None:
+    # Completing the flow with CREATE_ENTRY makes Home Assistant set the new
+    # entry up for real once the test yields control (at latest, when the
+    # ``hass`` fixture drains pending tasks during teardown). ``patch_bridge``
+    # / ``patch_listener`` keep that real setup off the network, the same way
+    # ``rako_integration`` does -- otherwise the coordinator's real
+    # ``Bridge``/``StatusListener`` open a genuine socket against the
+    # placeholder test host, which newer pytest-homeassistant-custom-component
+    # releases correctly flag as a socket opened during the test.
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -117,8 +127,11 @@ async def test_duplicate_mac_aborts(
 
 
 async def test_reconfigure_updates_host_and_port(
-    hass, mock_config_entry, patch_flow_bridge
+    hass, mock_config_entry, patch_flow_bridge, patch_bridge, patch_listener
 ) -> None:
+    # See the comment on test_manual_entry_creates_an_entry: a successful
+    # reconfigure reloads the entry, which sets it up for real unless the
+    # coordinator's Bridge/StatusListener are patched too.
     mock_config_entry.add_to_hass(hass)
 
     result = await mock_config_entry.start_reconfigure_flow(hass)
