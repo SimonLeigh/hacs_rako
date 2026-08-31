@@ -1,10 +1,22 @@
 {
     "config": {
+        "abort": {
+            "already_configured": "Device is already configured",
+            "reconfigure_successful": "Re-configuration was successful"
+        },
         "error": {
             "cannot_connect": "Failed to connect",
             "no_devices_found": "No devices found on the network"
         },
         "step": {
+            "reconfigure": {
+                "data": {
+                    "host": "Host",
+                    "port": "Port"
+                },
+                "description": "Update where the bridge can be reached. Its MAC address identifies the bridge and cannot be changed here.",
+                "title": "Rako Bridge Configuration"
+            },
             "user": {
                 "data": {
                     "host": "Host",
@@ -14,6 +26,54 @@
                 },
                 "description": "If pre-populated, Bridge was auto-discovered!",
                 "title": "Rako Bridge Configuration"
+            }
+        }
+    },
+    "device_automation": {
+        "trigger_type": {
+            "custom_232": "Custom RS-232 string sent",
+            "fade": "Fade button pressed",
+            "fade_down": "Fade down (legacy)",
+            "fade_up": "Fade up (legacy)",
+            "holiday": "Holiday mode changed",
+            "ident": "Identify",
+            "level_set_legacy": "Level set (legacy)",
+            "level_toggle": "Level toggled (undocumented command)",
+            "off": "Off",
+            "sc1_legacy": "Scene 1 selected (legacy)",
+            "sc2_legacy": "Scene 2 selected (legacy)",
+            "sc3_legacy": "Scene 3 selected (legacy)",
+            "sc4_legacy": "Scene 4 selected (legacy)",
+            "set_level": "Level set",
+            "set_scene": "Scene selected",
+            "stop_fading": "Fade button released",
+            "store": "Scene stored",
+            "unknown": "Unrecognised command"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "min_command_interval": "Minimum interval between commands",
+                    "poll_interval": "Reconciliation poll interval",
+                    "transport": "Command transport"
+                },
+                "data_description": {
+                    "min_command_interval": "The bridge silently drops commands sent too close together. Measured safe minimum is 1 second; the default leaves a margin.",
+                    "poll_interval": "How often to re-read the bridge's scene cache, in seconds. Minimum 60.",
+                    "transport": "How commands are sent to the bridge. Status is always received over UDP."
+                },
+                "description": "State arrives as broadcasts from the bridge; the poll is a safety net that bounds how long a missed broadcast can leave a light showing the wrong state.",
+                "title": "Rako options"
+            }
+        }
+    },
+    "selector": {
+        "transport": {
+            "options": {
+                "http": "HTTP",
+                "udp": "UDP (default)"
             }
         }
     }
