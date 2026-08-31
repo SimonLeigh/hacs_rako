@@ -3,11 +3,29 @@ name: "Test"
 on:
   push:
   pull_request:
+  schedule:
+    # Monthly, even with no code changes: catches a new Home Assistant
+    # stable/point release drifting past requirements_test_min.txt /
+    # requirements_test_latest.txt (see README.md "Supported Home Assistant
+    # versions") before a contributor happens to open a PR.
+    - cron: "0 6 5 * *"
 
 jobs:
   pytest:
-    name: "Pytest (Python 3.13)"
+    name: "Pytest (${{ matrix.lane }}, Python 3.14)"
     runs-on: "ubuntu-latest"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # requirements_test_min.txt / requirements_test_latest.txt are
+          # each self-contained (they pin their own homeassistant,
+          # pytest-homeassistant-custom-component, python-rako-2025 and
+          # colorlog), so neither lane installs requirements.txt.
+          - lane: "min"
+            requirements: "requirements_test_min.txt"
+          - lane: "latest"
+            requirements: "requirements_test_latest.txt"
     steps:
       - name: "Checkout the repository"
         uses: "actions/checkout@v4"
@@ -15,16 +33,26 @@ jobs:
       - name: "Install uv"
         uses: "astral-sh/setup-uv@v3"
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: "Create the virtualenv"
-        run: uv venv .venv --python 3.13
+        # Home Assistant now requires Python >=3.14.2 (both the min and
+        # latest homeassistant releases pinned in requirements_test_min.txt
+        # / requirements_test_latest.txt declare this), so 3.14 is the
+        # floor here too -- not 3.13.
+        run: uv venv .venv --python 3.14
 
       - name: "Install dependencies"
         run: |
-          uv pip install --python .venv/bin/python -r requirements.txt -r requirements_test.txt
+          uv pip install --python .venv/bin/python -r ${{ matrix.requirements }}
 
-      - name: "Run the test suite"
+      - name: "Run the test suite (min lane, no coverage gate)"
+        if: matrix.lane == 'min'
+        run: |
+          .venv/bin/python -m pytest tests/
+
+      - name: "Run the test suite (latest lane, coverage gate)"
+        if: matrix.lane == 'latest'
         run: |
           .venv/bin/python -m pytest tests/ \
             --cov=custom_components.rako \
