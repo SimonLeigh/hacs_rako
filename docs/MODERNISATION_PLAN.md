@@ -189,7 +189,27 @@ with tests; nothing merges red.
    return a small result object or distinct sentinels.
 5. Keyword-friendly `LevelCacheItem` construction (`room_id`/`channel_id` names).
 6. Document that `detach_listener()` must precede `Bridge.close()`.
-7. **Dependency currency sweep** (audited 2026-08-31, pip-audit + latest-version check):
+7. **Pacing v2 (priority; from the rako2mqtt comparison, 2026-09-04/05):**
+   - Re-measure the inter-command floor on THIS (hardwired) installation with sound
+     methodology (see BRIDGE_BEHAVIOUR open item); the 1.25 s default is a measurement
+     artifact. Do not adopt the RF-derived 150 ms figure blind -- a wired bus differs.
+   - `CommandQueue`: echo-gated pacing -- next send at `max(prev send + interval,
+     prev echo + small guard)` so the echo paces naturally once the interval is small.
+   - **Scene batching:** when several channel-level commands for one room arrive within a
+     short window and the requested levels match a programmed scene in the level table,
+     send one `SET_SCENE` instead of N `SET_LEVEL`s (a scene is a single command the
+     bridge fans out itself -- zero inter-command pacing). Prefer room/scene entities
+     for multi-channel intent generally; document this for automation authors.
+   - No-op suppression: skip a send when the snapshot already shows the target level
+     (the bridge does not echo no-ops, so today such a command would wait, retry, then
+     raise -- verify and fix). Optional: descending-brightness ordering for grouped ops.
+   - Terminology note: the queue paces the *bridge command stream*, not per channel;
+     per-channel behaviour is coalescing only. Arbitrary per-channel colour (RGBW colour
+     picker) is the only case that forces N paced commands -- not present here.
+8. **RGBW/composite lights (hacs_rako feature candidate, low priority here):** map N Rako
+   channels to one HA light with a colour picker (rako2mqtt demonstrates demand);
+   options-flow configured. Note this is the one use case where pacing v2 latency matters.
+9. **Dependency currency sweep** (audited 2026-08-31, pip-audit + latest-version check):
    - `hacs_rako` dev/CI: bump `homeassistant` 2026.2.3 → current (2026.8.3 at audit time)
      and `pytest-homeassistant-custom-component` 0.13.316 → matching (0.13.361); rerun the
      95-test suite against it; bump `colorlog`. Old HA pin drags CVE-bearing transitives

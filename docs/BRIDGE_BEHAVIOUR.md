@@ -182,14 +182,21 @@ of 92 (12h) and 50 (15h) — all sensor bursts.
 - [x] Bridge schedules / cloud-app: 23 h soak saw no cloud or bridge-scheduled traffic; the only overnight event was an HA automation (fact 19)
 - [x] 23 h soak: no observed loss; sensor storms and bridge-level duplicates characterised (facts 17–22)
 - [x] `scenes.htm` works as an HTTP scene-cache read (see fact 13)
-- [x] **Minimum safe inter-command interval: MEASURED 2026-08-30** with
-      `scripts/measure_interval.py` (paced off/on pairs to one switched channel, echo-verified,
-      no retries, 3 trials per interval): 2.0 s / 1.5 s / 1.0 s all 3/3 clean; **0.75 s lost a
-      command on trial 3** (no echo, verified real loss). Recommended and adopted
-      `DEFAULT_MIN_COMMAND_INTERVAL = 1.25 s` (fastest clean interval × 1.25 margin).
-      Confirms fact 12's loss mechanism: commands spaced too closely are silently dropped
-      by the bridge. Also observed this session: send→echo latency samples of 16 ms and
-      670 ms — wider variance than the 144–306 ms of Phase 0 — supporting the 1.5 s verify
-      window.
+- [ ] **Minimum safe inter-command interval: RE-MEASURE (2026-09-04/05).** The 2026-08-30
+      figure (1.0 s clean, one loss at 0.75 s -> 1.25 s default) is now considered a
+      **measurement artifact**: the script ran with retries=0 and stop-at-first-loss, so a
+      single missed *echo broadcast* (network-side UDP loss, independent of the downstream
+      bus) was recorded as a dropped *command* and condemned the interval. Nothing verified
+      the light's actual state. Independent data from another implementer (rako2mqtt,
+      RA-Bridge fw 2.5.0, wireless install) puts the real floor at ~80-90 ms per command --
+      the 433 MHz RF airtime -- with 150 ms fully reliable. **That number does not transfer
+      here: this installation is entirely HARDWIRED** (wired keypads/PIRs/modules on a wired
+      Rako bus; no 433 MHz devices), a cleaner medium where genuine command loss from
+      contention is unlikely and a real drop 750 ms after the previous command is
+      implausible. Re-measure THIS bridge: >=10 trials per interval, retries enabled, sweep
+      100-500 ms, and use room-scene commands so `scenes.htm` gives ground truth (separates
+      command-loss from echo-loss). Expect the default to fall well below 1.25 s.
+- [x] Previous measurement (2026-08-30, superseded above): 2.0/1.5/1.0 s all 3/3; 0.75 s
+      lost one echo on trial 3; adopted 1.25 s.
 - [ ] Decode cmd 0x33 fully (send it ourselves to a test channel with varying data bytes)
 - [ ] Fade-duration → level estimation: measure default fade rate (fade up from 0 to full, time it)
