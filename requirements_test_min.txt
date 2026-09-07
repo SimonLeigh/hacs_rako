@@ -21,7 +21,7 @@
 # https://pypi.org/pypi/homeassistant/<ver>/json), so 3.13 cannot install
 # either lane's homeassistant pin at all.
 homeassistant==2026.5.4
-pytest-homeassistant-custom-component==0.13.333
+pytest-homeassistant-custom-component==0.13.363
 pytest-cov==7.1.0
 python-rako-2025==0.5.0
 colorlog==6.12.0
