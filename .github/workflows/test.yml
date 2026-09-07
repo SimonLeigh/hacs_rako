@@ -28,7 +28,7 @@ jobs:
             requirements: "requirements_test_latest.txt"
     steps:
       - name: "Checkout the repository"
-        uses: "actions/checkout@v4"
+        uses: "actions/checkout@v7"
 
       - name: "Install uv"
         uses: "astral-sh/setup-uv@v3"
