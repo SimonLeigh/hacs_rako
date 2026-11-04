@@ -170,7 +170,7 @@ of 92 (12h) and 50 (15h) — all sensor bursts.
 
 ## Open items
 
-- [x] Confirm physical effect of the two cmd-0x33 events — YES: courtyard on → off.
+- [x] Confirm physical effect of the two cmd-0x33 events — YES: room 158's lights on → off.
       Hypothesis `data=[flags, level, on/off]` strengthened.
 - [x] Rako app: scene select — broadcasts legacy SC1–SC4 (0x03–0x06), parsed OK
 - [x] Rako app: channel slider — broadcasts LEVEL_SET (0x0C) with true level, parsed OK
