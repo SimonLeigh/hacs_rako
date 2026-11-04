@@ -35,6 +35,7 @@ from homeassistant.util import dt as dt_util
 
 from .conftest import (
     CHANNEL_KITCHEN_CEILING,
+    ROOM_BATHROOM,
     ROOM_KITCHEN,
     TEST_HOST,
     TEST_MAC,
@@ -116,6 +117,32 @@ async def test_poll_empty_scene_cache_after_startup_keeps_tracked_state(
     assert state.attributes[ATTR_BRIGHTNESS] == before
     assert rako_integration.coordinator.last_update_success is True
     assert any("empty scene cache" in record.message for record in caplog.records)
+
+
+async def test_poll_partial_scene_cache_after_bridge_restart_keeps_absent_rooms(
+    hass, rako_integration
+) -> None:
+    """A restarted bridge's cache refills one scene selection at a time.
+
+    The first read after a restart lists only the rooms used since, so it is
+    not empty and passes ``has_scene_data``. The library lists every other room
+    with scene=None, and before python-rako-2025 0.5.1 reconcile() read that as
+    a missed scene change and wiped those rooms to unknown (observed
+    2026-11-03). A room missing from the cache has not changed.
+    """
+    assert hass.states.get("light.kitchen").attributes[ATTR_BRIGHTNESS] == 255
+    assert hass.states.get("light.kitchen_ceiling").attributes[ATTR_BRIGHTNESS] == 200
+
+    rako_integration.bridge.scene_cache = SceneCache({ROOM_BATHROOM: 1})
+    await _advance_past_poll_interval(hass)
+
+    room = hass.states.get("light.kitchen")
+    assert room.state == "on"
+    assert room.attributes[ATTR_BRIGHTNESS] == 255
+    channel = hass.states.get("light.kitchen_ceiling")
+    assert channel.state == "on"
+    assert channel.attributes[ATTR_BRIGHTNESS] == 200
+    assert rako_integration.coordinator.last_update_success is True
 
 
 async def test_poll_empty_scene_cache_before_first_snapshot_is_accepted_with_warning(
